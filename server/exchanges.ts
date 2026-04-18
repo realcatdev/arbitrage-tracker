@@ -3,6 +3,7 @@ import type {
   AssetSymbol,
   CustomEndpointTestResult,
   CustomQuoteEndpoint,
+  ExchangeCheck,
   ExchangeId,
   ExchangeStatus,
   Quote
@@ -30,6 +31,7 @@ interface FetchSource {
 interface MarketFetchResult {
   quote: Quote | null;
   error: string | null;
+  check: ExchangeCheck;
 }
 
 interface CustomQuotePayload {
@@ -82,14 +84,27 @@ const baseStatus = (exchange: ExchangeId): ExchangeStatus => ({
   exchange,
   ok: false,
   lastUpdate: null,
-  message: "waiting for first fetch"
+  message: "waiting for first fetch",
+  successCount: 0,
+  failureCount: 0,
+  checks: []
 });
 
 const failedResult = (exchange: ExchangeId, error: unknown): FetchResult => ({
   quotes: [],
   status: {
     ...baseStatus(exchange),
-    message: error instanceof Error ? error.message : "unknown fetch error"
+    message: error instanceof Error ? error.message : "unknown fetch error",
+    failureCount: 1,
+    checks: [
+      {
+        symbol: "all",
+        sourceSymbol: exchange,
+        ok: false,
+        message: error instanceof Error ? error.message : "unknown fetch error",
+        code: errorCode(error)
+      }
+    ]
   }
 });
 
@@ -97,14 +112,18 @@ export const statusForQuotes = (
   exchange: ExchangeId,
   quotes: Quote[],
   failureCount: number,
-  label: string
+  label: string,
+  checks: ExchangeCheck[] = []
 ): ExchangeStatus => {
   if (quotes.length > 0 && failureCount > 0) {
     return {
       exchange,
       ok: true,
       lastUpdate: Date.now(),
-      message: `${quotes.length} ${label} online, ${failureCount} failed`
+      message: `${quotes.length} ${label} online, ${failureCount} failed`,
+      successCount: quotes.length,
+      failureCount,
+      checks
     };
   }
 
@@ -113,13 +132,18 @@ export const statusForQuotes = (
       exchange,
       ok: true,
       lastUpdate: Date.now(),
-      message: `${quotes.length} ${label} online`
+      message: `${quotes.length} ${label} online`,
+      successCount: quotes.length,
+      failureCount,
+      checks
     };
   }
 
   return {
     ...baseStatus(exchange),
-    message: `0 ${label} online${failureCount > 0 ? `, ${failureCount} failed` : ""}`
+    message: `0 ${label} online${failureCount > 0 ? `, ${failureCount} failed` : ""}`,
+    failureCount,
+    checks
   };
 };
 
@@ -131,9 +155,52 @@ const settledMarketResults = (
       ? result.value
       : {
           quote: null,
-          error: result.reason instanceof Error ? result.reason.message : "unknown market error"
+          error: result.reason instanceof Error ? result.reason.message : "unknown market error",
+          check: {
+            symbol: "unknown",
+            sourceSymbol: "unknown",
+            ok: false,
+            message: result.reason instanceof Error ? result.reason.message : "unknown market error",
+            code: errorCode(result.reason)
+          }
         }
   );
+
+const errorCode = (error: unknown): string | undefined => {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  return error.message.match(/\b\d{3}\b/)?.[0] ?? error.name;
+};
+
+const successCheck = (
+  symbol: string,
+  sourceSymbol: string,
+  quoteSource: string,
+  startedAt: number
+): ExchangeCheck => ({
+  symbol,
+  sourceSymbol,
+  ok: true,
+  message: "quote accepted",
+  quoteSource,
+  latencyMs: Date.now() - startedAt
+});
+
+const failureCheck = (
+  symbol: string,
+  sourceSymbol: string,
+  error: unknown,
+  startedAt: number
+): ExchangeCheck => ({
+  symbol,
+  sourceSymbol,
+  ok: false,
+  message: error instanceof Error ? error.message : "unknown quote error",
+  code: errorCode(error),
+  latencyMs: Date.now() - startedAt
+});
 
 const numberFrom = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -178,6 +245,7 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
   const exchange: ExchangeId = "binance";
   const results = await Promise.allSettled(
     getMarkets().map(async (market): Promise<MarketFetchResult> => {
+      const startedAt = Date.now();
       try {
         let sourceHost = "api.binance.com";
         let data: { bidPrice: string; askPrice: string };
@@ -200,22 +268,27 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
           throw new Error(`invalid book ticker for ${market.binance}`);
         }
 
-        return {
-          quote: {
+        const quoteSource = `${market.binance} stablecoin quote via ${sourceHost}`;
+        const quote = {
             exchange,
             symbol: market.symbol,
             bid,
             ask,
             feeRate: feeFor(exchange),
-            quoteSource: `${market.binance} stablecoin quote via ${sourceHost}`,
+            quoteSource,
             timestamp: Date.now()
-          },
-          error: null
+          };
+
+        return {
+          quote,
+          error: null,
+          check: successCheck(market.symbol, market.binance, quoteSource, startedAt)
         };
       } catch (error) {
         return {
           quote: null,
-          error: error instanceof Error ? error.message : `unknown binance error for ${market.symbol}`
+          error: error instanceof Error ? error.message : `unknown binance error for ${market.symbol}`,
+          check: failureCheck(market.symbol, market.binance, error, startedAt)
         };
       }
     })
@@ -226,7 +299,13 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
 
   return {
     quotes,
-    status: statusForQuotes(exchange, quotes, failureCount, "markets")
+    status: statusForQuotes(
+      exchange,
+      quotes,
+      failureCount,
+      "markets",
+      marketResults.map((result) => result.check)
+    )
   };
 };
 
@@ -234,6 +313,7 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
   const exchange: ExchangeId = "kraken";
   const results = await Promise.allSettled(
     getMarkets().map(async (market): Promise<MarketFetchResult> => {
+      const startedAt = Date.now();
       try {
         const data = await requestJson<{
           error: string[];
@@ -256,8 +336,7 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
           throw new Error(`invalid kraken ticker for ${market.kraken}`);
         }
 
-        return {
-          quote: {
+        const quote = {
             exchange,
             symbol: market.symbol,
             bid,
@@ -265,13 +344,18 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
             feeRate: feeFor(exchange),
             quoteSource: market.kraken,
             timestamp: Date.now()
-          },
-          error: null
+          };
+
+        return {
+          quote,
+          error: null,
+          check: successCheck(market.symbol, market.kraken, market.kraken, startedAt)
         };
       } catch (error) {
         return {
           quote: null,
-          error: error instanceof Error ? error.message : `unknown kraken error for ${market.symbol}`
+          error: error instanceof Error ? error.message : `unknown kraken error for ${market.symbol}`,
+          check: failureCheck(market.symbol, market.kraken, error, startedAt)
         };
       }
     })
@@ -282,7 +366,13 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
 
   return {
     quotes,
-    status: statusForQuotes(exchange, quotes, failureCount, "markets")
+    status: statusForQuotes(
+      exchange,
+      quotes,
+      failureCount,
+      "markets",
+      marketResults.map((result) => result.check)
+    )
   };
 };
 
@@ -290,6 +380,7 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
   const exchange: ExchangeId = "coinbase";
   const results = await Promise.allSettled(
     getMarkets().map(async (market): Promise<MarketFetchResult> => {
+      const startedAt = Date.now();
       try {
         const data = await requestJson<{ bids: [string, string][]; asks: [string, string][] }>(
           `https://api.exchange.coinbase.com/products/${market.coinbase}/book?level=1`
@@ -301,8 +392,7 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
           throw new Error(`invalid coinbase book for ${market.coinbase}`);
         }
 
-        return {
-          quote: {
+        const quote = {
             exchange,
             symbol: market.symbol,
             bid,
@@ -310,13 +400,18 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
             feeRate: feeFor(exchange),
             quoteSource: market.coinbase,
             timestamp: Date.now()
-          },
-          error: null
+          };
+
+        return {
+          quote,
+          error: null,
+          check: successCheck(market.symbol, market.coinbase, market.coinbase, startedAt)
         };
       } catch (error) {
         return {
           quote: null,
-          error: error instanceof Error ? error.message : `unknown coinbase error for ${market.symbol}`
+          error: error instanceof Error ? error.message : `unknown coinbase error for ${market.symbol}`,
+          check: failureCheck(market.symbol, market.coinbase, error, startedAt)
         };
       }
     })
@@ -327,7 +422,13 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
 
   return {
     quotes,
-    status: statusForQuotes(exchange, quotes, failureCount, "markets")
+    status: statusForQuotes(
+      exchange,
+      quotes,
+      failureCount,
+      "markets",
+      marketResults.map((result) => result.check)
+    )
   };
 };
 
@@ -337,6 +438,8 @@ export const fetchCustomEndpointQuotes = async (
   headers: Record<string, string> = {}
 ): Promise<FetchResult> => {
   const quotes: Quote[] = [];
+  const checks: ExchangeCheck[] = [];
+  const startedAt = Date.now();
 
   try {
     const data = await requestJson<CustomQuotePayload[] | { quotes: CustomQuotePayload[] }>(
@@ -356,30 +459,48 @@ export const fetchCustomEndpointQuotes = async (
       const ask = numberFrom(payload.ask);
 
       if (!symbol || bid === null || ask === null) {
+        checks.push({
+          symbol: symbol || "unknown",
+          sourceSymbol: url,
+          ok: false,
+          message: "custom quote missing valid symbol, bid, or ask",
+          code: "invalid_payload",
+          latencyMs: Date.now() - startedAt
+        });
         continue;
       }
 
+      const quoteSource = payload.quoteSource ?? url;
       quotes.push({
         exchange: payload.exchange?.trim().toLowerCase() || exchange,
         symbol,
         bid,
         ask,
         feeRate: nonNegativeNumberFrom(payload.feeRate) ?? feeFor(exchange),
-        quoteSource: payload.quoteSource ?? url,
+        quoteSource,
         timestamp: payload.timestamp ?? Date.now()
       });
+      checks.push(successCheck(symbol, url, quoteSource, startedAt));
     }
 
     return {
       quotes,
-      status: statusForQuotes(exchange, quotes, payloads.length - quotes.length, "custom quotes")
+      status: statusForQuotes(
+        exchange,
+        quotes,
+        payloads.length - quotes.length,
+        "custom quotes",
+        checks
+      )
     };
   } catch (error) {
     return {
       quotes,
       status: {
         ...baseStatus(exchange),
-        message: error instanceof Error ? error.message : "unknown custom endpoint error"
+        message: error instanceof Error ? error.message : "unknown custom endpoint error",
+        failureCount: 1,
+        checks: [failureCheck(exchange, url, error, startedAt)]
       }
     };
   }

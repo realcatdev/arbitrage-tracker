@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CustomEndpointTestResult,
   CustomQuoteEndpoint,
+  ExchangeCheck,
   ExchangeId,
+  ExchangeStatus as ExchangeStatusType,
   MarketSnapshot,
   Opportunity,
   Quote,
@@ -46,6 +48,8 @@ const bestOpportunity = (snapshot: MarketSnapshot | null): Opportunity | null =>
   snapshot?.opportunities[0] ?? null;
 
 const quoteKey = (quote: Quote): string => `${quote.exchange}-${quote.symbol}`;
+const checkKey = (check: ExchangeCheck): string =>
+  `${check.symbol}-${check.sourceSymbol}-${check.ok ? "ok" : "fail"}`;
 
 const emptyConfig: RuntimeConfig = {
   pollIntervalMs: 3000,
@@ -645,24 +649,94 @@ function OpportunityTable({
 }
 
 function ExchangeStatus({ snapshot }: { snapshot: MarketSnapshot | null }) {
+  const [expandedExchange, setExpandedExchange] = useState<string | null>(null);
+  const statuses = snapshot?.statuses ?? [];
+
   return (
     <section className="railPanel">
       <div className="panelHeader compact">
-        <h2>Exchanges</h2>
+        <div>
+          <p className="eyebrow">click for trace</p>
+          <h2>Exchanges</h2>
+        </div>
       </div>
       <div className="statusList">
-        {(snapshot?.statuses ?? []).map((status) => (
-          <div className="statusRow" key={status.exchange}>
-            <span className={`dot ${status.ok ? "ok" : "bad"}`} />
-            <div>
-              <strong>{exchangeLabel(status.exchange)}</strong>
-              <span>{status.message}</span>
+        {statuses.map((status) => {
+          const expanded = expandedExchange === status.exchange;
+          const passed = status.successCount ?? status.checks?.filter((check) => check.ok).length ?? 0;
+          const failed = status.failureCount ?? status.checks?.filter((check) => !check.ok).length ?? 0;
+
+          return (
+            <div className="exchangeBlock" key={status.exchange}>
+              <button
+                aria-expanded={expanded}
+                className="statusRow statusButton"
+                type="button"
+                onClick={() => setExpandedExchange(expanded ? null : status.exchange)}
+              >
+                <span className={`dot ${status.ok ? "ok" : "bad"}`} />
+                <div>
+                  <strong>{exchangeLabel(status.exchange)}</strong>
+                  <span>{status.message}</span>
+                </div>
+                <div className="statusMeta">
+                  <small>{timeAgo(status.lastUpdate)}</small>
+                  <span className="miniStats">
+                    {passed} ok / {failed} fail
+                  </span>
+                </div>
+              </button>
+              {expanded ? <ExchangeDetails status={status} /> : null}
             </div>
-            <small>{timeAgo(status.lastUpdate)}</small>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
+  );
+}
+
+function ExchangeDetails({ status }: { status: ExchangeStatusType }) {
+  const checks = status.checks ?? [];
+
+  if (checks.length === 0) {
+    return <p className="diagnosticEmpty">no request diagnostics reported yet.</p>;
+  }
+
+  return (
+    <div className="diagnostics">
+      {checks.map((check) => (
+        <div className={`diagnosticRow ${check.ok ? "passed" : "failed"}`} key={checkKey(check)}>
+          <div className="diagnosticHead">
+            <strong>{check.symbol}</strong>
+            <span>{check.ok ? "passed" : "failed"}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>source</dt>
+              <dd>{check.sourceSymbol}</dd>
+            </div>
+            <div>
+              <dt>code</dt>
+              <dd>{check.code ?? "ok"}</dd>
+            </div>
+            <div>
+              <dt>latency</dt>
+              <dd>{check.latencyMs ?? 0}ms</dd>
+            </div>
+            <div>
+              <dt>message</dt>
+              <dd>{check.message}</dd>
+            </div>
+            {check.quoteSource ? (
+              <div>
+                <dt>quote</dt>
+                <dd>{check.quoteSource}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      ))}
+    </div>
   );
 }
 

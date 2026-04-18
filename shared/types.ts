@@ -17,6 +17,19 @@ export interface ExchangeStatus {
   ok: boolean;
   lastUpdate: number | null;
   message: string;
+  successCount?: number;
+  failureCount?: number;
+  checks?: ExchangeCheck[];
+}
+
+export interface ExchangeCheck {
+  symbol: AssetSymbol;
+  sourceSymbol: string;
+  ok: boolean;
+  message: string;
+  code?: string;
+  quoteSource?: string;
+  latencyMs?: number;
 }
 
 export interface CustomQuoteEndpoint {
