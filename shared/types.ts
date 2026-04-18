@@ -1,6 +1,6 @@
-export type ExchangeId = "binance" | "kraken" | "coinbase";
+export type ExchangeId = string;
 
-export type AssetSymbol = "BTC/USD" | "ETH/USD" | "SOL/USD";
+export type AssetSymbol = string;
 
 export interface Quote {
   exchange: ExchangeId;
@@ -38,6 +38,7 @@ export interface MarketSnapshot {
   quotes: Quote[];
   opportunities: Opportunity[];
   statuses: ExchangeStatus[];
+  trackedSymbols: AssetSymbol[];
   updatedAt: number;
   pollIntervalMs: number;
   thresholdPercent: number;

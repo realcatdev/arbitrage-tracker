@@ -1,10 +1,12 @@
+import { config } from "./config.js";
 import type { AssetSymbol, ExchangeId, ExchangeStatus, Quote } from "../shared/types.js";
 
 interface MarketConfig {
   symbol: AssetSymbol;
+  base: string;
+  quote: string;
   binance: string;
   kraken: string;
-  krakenResultKey: string;
   coinbase: string;
 }
 
@@ -13,35 +15,51 @@ interface FetchResult {
   status: ExchangeStatus;
 }
 
-const markets: MarketConfig[] = [
-  {
-    symbol: "BTC/USD",
-    binance: "BTCUSDT",
-    kraken: "XBTUSD",
-    krakenResultKey: "XXBTZUSD",
-    coinbase: "BTC-USD"
-  },
-  {
-    symbol: "ETH/USD",
-    binance: "ETHUSDT",
-    kraken: "ETHUSD",
-    krakenResultKey: "XETHZUSD",
-    coinbase: "ETH-USD"
-  },
-  {
-    symbol: "SOL/USD",
-    binance: "SOLUSDT",
-    kraken: "SOLUSD",
-    krakenResultKey: "SOLUSD",
-    coinbase: "SOL-USD"
-  }
-];
+interface CustomQuotePayload {
+  exchange?: string;
+  symbol: string;
+  bid: number | string;
+  ask: number | string;
+  feeRate?: number | string;
+  quoteSource?: string;
+  timestamp?: number;
+}
 
-const exchangeFees: Record<ExchangeId, number> = {
-  binance: 0.001,
-  kraken: 0.0026,
-  coinbase: 0.006
+const krakenBaseAliases: Record<string, string> = {
+  BTC: "XBT"
 };
+
+const krakenResultKeys = (market: MarketConfig): string[] => {
+  const krakenBase = krakenBaseAliases[market.base] ?? market.base;
+  const candidates = [
+    market.kraken,
+    `${market.base}${market.quote}`,
+    `${krakenBase}${market.quote}`
+  ];
+
+  if (market.quote === "USD") {
+    candidates.push(`X${krakenBase}ZUSD`, `X${market.base}ZUSD`);
+  }
+
+  return candidates.map(normalizeKey);
+};
+
+const getMarkets = (): MarketConfig[] =>
+  config.trackedMarkets.map((symbol) => {
+    const [base, quote] = symbol.split("/");
+    const binanceQuote = quote === "USD" ? "USDT" : quote;
+
+    return {
+      symbol,
+      base,
+      quote,
+      binance: `${base}${binanceQuote}`,
+      kraken: `${krakenBaseAliases[base] ?? base}${quote}`,
+      coinbase: `${base}-${quote}`
+    };
+  });
+
+const feeFor = (exchange: ExchangeId): number => config.exchangeFees[exchange] ?? 0.0025;
 
 const baseStatus = (exchange: ExchangeId): ExchangeStatus => ({
   exchange,
@@ -54,6 +72,13 @@ const numberFrom = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
+
+const nonNegativeNumberFrom = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const normalizeKey = (value: string): string => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
 const requestJson = async <T>(url: string, timeoutMs = 5000): Promise<T> => {
   const controller = new AbortController();
@@ -84,7 +109,7 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
 
   try {
     await Promise.all(
-      markets.map(async (market) => {
+      getMarkets().map(async (market) => {
         let data: { bidPrice: string; askPrice: string };
 
         try {
@@ -110,7 +135,7 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
           symbol: market.symbol,
           bid,
           ask,
-          feeRate: exchangeFees[exchange],
+          feeRate: feeFor(exchange),
           quoteSource: `${market.binance} stablecoin quote via ${sourceHost}`,
           timestamp: Date.now()
         });
@@ -140,6 +165,7 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
 export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
   const exchange: ExchangeId = "kraken";
   const quotes: Quote[] = [];
+  const markets = getMarkets();
 
   try {
     const pairs = markets.map((market) => market.kraken).join(",");
@@ -152,8 +178,13 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
       throw new Error(data.error.join(", "));
     }
 
+    const availableEntries = Object.entries(data.result);
+
     for (const market of markets) {
-      const ticker = data.result[market.krakenResultKey];
+      const expectedKeys = new Set(krakenResultKeys(market));
+      const ticker = availableEntries.find(([key]) =>
+        Array.from(expectedKeys).some((expected) => normalizeKey(key).includes(expected))
+      )?.[1];
       const bid = numberFrom(ticker?.b?.[0]);
       const ask = numberFrom(ticker?.a?.[0]);
 
@@ -166,7 +197,7 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
         symbol: market.symbol,
         bid,
         ask,
-        feeRate: exchangeFees[exchange],
+        feeRate: feeFor(exchange),
         quoteSource: market.kraken,
         timestamp: Date.now()
       });
@@ -202,7 +233,7 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
 
   try {
     await Promise.all(
-      markets.map(async (market) => {
+      getMarkets().map(async (market) => {
         const data = await requestJson<{ bids: [string, string][]; asks: [string, string][] }>(
           `https://api.exchange.coinbase.com/products/${market.coinbase}/book?level=1`
         );
@@ -218,7 +249,7 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
           symbol: market.symbol,
           bid,
           ask,
-          feeRate: exchangeFees[exchange],
+          feeRate: feeFor(exchange),
           quoteSource: market.coinbase,
           timestamp: Date.now()
         });
@@ -245,5 +276,66 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
   }
 };
 
+export const fetchCustomEndpointQuotes = async (
+  exchange: ExchangeId,
+  url: string
+): Promise<FetchResult> => {
+  const quotes: Quote[] = [];
+
+  try {
+    const data = await requestJson<CustomQuotePayload[] | { quotes: CustomQuotePayload[] }>(url);
+    const payloads = Array.isArray(data) ? data : data.quotes;
+
+    if (!Array.isArray(payloads)) {
+      throw new Error("custom endpoint must return an array or { quotes: [] }");
+    }
+
+    for (const payload of payloads) {
+      const symbol = payload.symbol?.trim().toUpperCase();
+      const bid = numberFrom(payload.bid);
+      const ask = numberFrom(payload.ask);
+
+      if (!symbol || bid === null || ask === null) {
+        continue;
+      }
+
+      quotes.push({
+        exchange: payload.exchange?.trim().toLowerCase() || exchange,
+        symbol,
+        bid,
+        ask,
+        feeRate: nonNegativeNumberFrom(payload.feeRate) ?? feeFor(exchange),
+        quoteSource: payload.quoteSource ?? url,
+        timestamp: payload.timestamp ?? Date.now()
+      });
+    }
+
+    return {
+      quotes,
+      status: {
+        exchange,
+        ok: true,
+        lastUpdate: Date.now(),
+        message: `${quotes.length} custom quotes online`
+      }
+    };
+  } catch (error) {
+    return {
+      quotes,
+      status: {
+        ...baseStatus(exchange),
+        message: error instanceof Error ? error.message : "unknown custom endpoint error"
+      }
+    };
+  }
+};
+
 export const fetchAllQuotes = async (): Promise<FetchResult[]> =>
-  Promise.all([fetchBinanceQuotes(), fetchKrakenQuotes(), fetchCoinbaseQuotes()]);
+  Promise.all([
+    fetchBinanceQuotes(),
+    fetchKrakenQuotes(),
+    fetchCoinbaseQuotes(),
+    ...config.customQuoteEndpoints.map((endpoint) =>
+      fetchCustomEndpointQuotes(endpoint.name, endpoint.url)
+    )
+  ]);

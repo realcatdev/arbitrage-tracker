@@ -2,11 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExchangeId, MarketSnapshot, Opportunity, Quote } from "../shared/types";
 import { useMarketStream } from "./hooks/useMarketStream";
 
-const exchangeLabels: Record<ExchangeId, string> = {
+const builtInExchangeLabels: Record<string, string> = {
   binance: "Binance",
   kraken: "Kraken",
   coinbase: "Coinbase"
 };
+
+const exchangeLabel = (exchange: ExchangeId): string =>
+  builtInExchangeLabels[exchange] ??
+  exchange
+    .split(/[-_\s]/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat("en-US", {
@@ -34,18 +42,42 @@ const quoteKey = (quote: Quote): string => `${quote.exchange}-${quote.symbol}`;
 function App() {
   const { snapshot, connectionState, lastMessageAt } = useMarketStream();
   const [threshold, setThreshold] = useState(0.25);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("all");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const lastBrowserAlert = useRef<string | null>(null);
 
-  const profitable = useMemo(
+  const visibleSymbols = useMemo(() => {
+    const quoteSymbols = (snapshot?.quotes ?? []).map((quote) => quote.symbol);
+    return Array.from(new Set([...(snapshot?.trackedSymbols ?? []), ...quoteSymbols])).sort();
+  }, [snapshot?.quotes, snapshot?.trackedSymbols]);
+
+  const visibleOpportunities = useMemo(
     () =>
-      (snapshot?.opportunities ?? []).filter(
-        (opportunity) => opportunity.estimatedProfitPercent >= threshold
-      ),
-    [snapshot?.opportunities, threshold]
+      selectedSymbol === "all"
+        ? (snapshot?.opportunities ?? [])
+        : (snapshot?.opportunities ?? []).filter(
+            (opportunity) => opportunity.symbol === selectedSymbol
+          ),
+    [selectedSymbol, snapshot?.opportunities]
   );
 
-  const top = bestOpportunity(snapshot);
+  const visibleQuotes = useMemo(
+    () =>
+      selectedSymbol === "all"
+        ? (snapshot?.quotes ?? [])
+        : (snapshot?.quotes ?? []).filter((quote) => quote.symbol === selectedSymbol),
+    [selectedSymbol, snapshot?.quotes]
+  );
+
+  const profitable = useMemo(
+    () =>
+      visibleOpportunities.filter(
+        (opportunity) => opportunity.estimatedProfitPercent >= threshold
+      ),
+    [threshold, visibleOpportunities]
+  );
+
+  const top = visibleOpportunities[0] ?? bestOpportunity(snapshot);
 
   useEffect(() => {
     const best = profitable[0];
@@ -64,7 +96,7 @@ function App() {
 
     lastBrowserAlert.current = alertKey;
     const notification = new Notification(`${best.symbol} spread detected`, {
-      body: `${exchangeLabels[best.buyExchange]} to ${exchangeLabels[best.sellExchange]} at ${formatPercent(
+      body: `${exchangeLabel(best.buyExchange)} to ${exchangeLabel(best.sellExchange)} at ${formatPercent(
         best.estimatedProfitPercent
       )} after fees.`
     });
@@ -118,6 +150,26 @@ function App() {
         </button>
       </section>
 
+      <section className="marketPicker" aria-label="market filter">
+        <button
+          className={selectedSymbol === "all" ? "active" : undefined}
+          type="button"
+          onClick={() => setSelectedSymbol("all")}
+        >
+          all markets
+        </button>
+        {visibleSymbols.map((symbol) => (
+          <button
+            className={selectedSymbol === symbol ? "active" : undefined}
+            key={symbol}
+            type="button"
+            onClick={() => setSelectedSymbol(symbol)}
+          >
+            {symbol}
+          </button>
+        ))}
+      </section>
+
       <section className="overview" aria-label="market overview">
         <Metric
           label="best net spread"
@@ -133,8 +185,8 @@ function App() {
         />
         <Metric
           label="markets"
-          value={String(snapshot?.quotes.length ?? 0)}
-          detail={`${snapshot?.pollIntervalMs ?? 3000}ms polling`}
+          value={String(visibleSymbols.length)}
+          detail={selectedSymbol === "all" ? `${snapshot?.pollIntervalMs ?? 3000}ms polling` : selectedSymbol}
         />
         <Metric
           label="exchanges"
@@ -151,12 +203,12 @@ function App() {
               <h2>Opportunities</h2>
             </div>
           </div>
-          <OpportunityTable opportunities={snapshot?.opportunities ?? []} threshold={threshold} />
+          <OpportunityTable opportunities={visibleOpportunities} threshold={threshold} />
         </div>
 
         <aside className="sideRail">
           <ExchangeStatus snapshot={snapshot} />
-          <QuoteTape quotes={snapshot?.quotes ?? []} />
+          <QuoteTape quotes={visibleQuotes} />
         </aside>
       </section>
     </main>
@@ -221,8 +273,9 @@ function OpportunityTable({
                   <span className="subtle">{formatPercent(opportunity.estimatedProfitPercent)}</span>
                 </td>
                 <td>
-                  {exchangeLabels[opportunity.buyExchange]}{" -> "}
-                  {exchangeLabels[opportunity.sellExchange]}
+                  {exchangeLabel(opportunity.buyExchange)}
+                  {" -> "}
+                  {exchangeLabel(opportunity.sellExchange)}
                 </td>
               </tr>
             );
@@ -244,7 +297,7 @@ function ExchangeStatus({ snapshot }: { snapshot: MarketSnapshot | null }) {
           <div className="statusRow" key={status.exchange}>
             <span className={`dot ${status.ok ? "ok" : "bad"}`} />
             <div>
-              <strong>{exchangeLabels[status.exchange]}</strong>
+              <strong>{exchangeLabel(status.exchange)}</strong>
               <span>{status.message}</span>
             </div>
             <small>{timeAgo(status.lastUpdate)}</small>
@@ -266,7 +319,7 @@ function QuoteTape({ quotes }: { quotes: Quote[] }) {
           <div className="quoteRow" key={quoteKey(quote)}>
             <div>
               <strong>{quote.symbol}</strong>
-              <span>{exchangeLabels[quote.exchange]}</span>
+              <span>{exchangeLabel(quote.exchange)}</span>
             </div>
             <div>
               <span>{formatCurrency(quote.bid)}</span>

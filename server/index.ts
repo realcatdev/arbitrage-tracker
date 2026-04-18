@@ -52,6 +52,7 @@ const poll = async (): Promise<void> => {
     quotes,
     opportunities,
     statuses,
+    config.trackedMarkets,
     config.pollIntervalMs,
     config.alertThresholdPercent
   );

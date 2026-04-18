@@ -27,6 +27,66 @@ cp .env.example .env
 npm run dev
 ```
 
+## configuration
+
+The default markets are `BTC/USD`, `ETH/USD`, and `SOL/USD`, but the backend can track a different comma-separated set:
+
+```bash
+TRACKED_MARKETS=BTC/USD,ETH/USD,DOGE/USD,LTC/USD
+```
+
+The built-in adapters derive exchange pair ids from those symbols:
+
+- Binance uses `USD` markets as stablecoin quotes such as `BTCUSDT`.
+- Kraken uses common pair ids such as `XBTUSD`, `ETHUSD`, and `SOLUSD`.
+- Coinbase uses product ids such as `BTC-USD`.
+
+Some assets will not be available on every exchange. The exchange health panel will show partial failures or a lower market count when an adapter cannot fetch a symbol.
+
+Basic fee assumptions can be overridden without code changes:
+
+```bash
+EXCHANGE_FEES=binance:0.001,kraken:0.0026,coinbase:0.006,mydesk:0.0015
+```
+
+## custom quote apis
+
+Users can add their own public or private quote source if they expose normalized bid/ask data over HTTP:
+
+```bash
+CUSTOM_QUOTE_ENDPOINTS=mydesk:http://localhost:9000/quotes
+```
+
+The endpoint can return an array:
+
+```json
+[
+  {
+    "symbol": "BTC/USD",
+    "bid": 65000,
+    "ask": 65010,
+    "feeRate": 0.0015
+  }
+]
+```
+
+Or an object with a `quotes` array:
+
+```json
+{
+  "quotes": [
+    {
+      "symbol": "ETH/USD",
+      "bid": 3200,
+      "ask": 3201,
+      "quoteSource": "internal desk feed"
+    }
+  ]
+}
+```
+
+Custom quotes are compared against built-in exchanges automatically when their `symbol` matches.
+
 ## what it measures
 
 The arbitrage engine uses executable sides of the book:
@@ -37,7 +97,7 @@ The arbitrage engine uses executable sides of the book:
 
 That avoids the common mistake of comparing last traded prices and calling the difference profit.
 
-## supported markets
+## default markets
 
 - BTC/USD
 - ETH/USD

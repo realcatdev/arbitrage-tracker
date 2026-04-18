@@ -63,12 +63,14 @@ export const buildSnapshot = (
   quotes: Quote[],
   opportunities: Opportunity[],
   statuses: MarketSnapshot["statuses"],
+  trackedSymbols: MarketSnapshot["trackedSymbols"],
   pollIntervalMs: number,
   thresholdPercent: number
 ): MarketSnapshot => ({
   quotes: quotes.length > 0 ? quotes : previous?.quotes ?? [],
   opportunities: opportunities.length > 0 ? opportunities : previous?.opportunities ?? [],
   statuses,
+  trackedSymbols,
   updatedAt: Date.now(),
   pollIntervalMs,
   thresholdPercent
