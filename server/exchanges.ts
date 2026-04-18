@@ -22,6 +22,11 @@ interface FetchResult {
   status: ExchangeStatus;
 }
 
+interface FetchSource {
+  exchange: ExchangeId;
+  fetchQuotes: () => Promise<FetchResult>;
+}
+
 interface CustomQuotePayload {
   exchange?: string;
   symbol: string;
@@ -73,6 +78,14 @@ const baseStatus = (exchange: ExchangeId): ExchangeStatus => ({
   ok: false,
   lastUpdate: null,
   message: "waiting for first fetch"
+});
+
+const failedResult = (exchange: ExchangeId, error: unknown): FetchResult => ({
+  quotes: [],
+  status: {
+    ...baseStatus(exchange),
+    message: error instanceof Error ? error.message : "unknown fetch error"
+  }
 });
 
 const numberFrom = (value: unknown): number | null => {
@@ -347,15 +360,23 @@ export const fetchCustomEndpointQuotes = async (
   }
 };
 
-export const fetchAllQuotes = async (): Promise<FetchResult[]> =>
-  Promise.all([
-    fetchBinanceQuotes(),
-    fetchKrakenQuotes(),
-    fetchCoinbaseQuotes(),
-    ...config.customQuoteEndpoints.map((endpoint) =>
-      fetchCustomEndpointQuotes(endpoint.name, endpoint.url, endpoint.headers ?? {})
-    )
-  ]);
+export const fetchAllQuotes = async (): Promise<FetchResult[]> => {
+  const sources: FetchSource[] = [
+    { exchange: "binance", fetchQuotes: fetchBinanceQuotes },
+    { exchange: "kraken", fetchQuotes: fetchKrakenQuotes },
+    { exchange: "coinbase", fetchQuotes: fetchCoinbaseQuotes },
+    ...config.customQuoteEndpoints.map((endpoint) => ({
+      exchange: endpoint.name,
+      fetchQuotes: () => fetchCustomEndpointQuotes(endpoint.name, endpoint.url, endpoint.headers ?? {})
+    }))
+  ];
+
+  const settled = await Promise.allSettled(sources.map((source) => source.fetchQuotes()));
+
+  return settled.map((result, index) =>
+    result.status === "fulfilled" ? result.value : failedResult(sources[index].exchange, result.reason)
+  );
+};
 
 export const testCustomEndpoint = async (
   endpoint: CustomQuoteEndpoint

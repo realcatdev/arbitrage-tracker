@@ -100,6 +100,8 @@ X-API-Key: your-key
 
 Use the row's `test` button to verify that the endpoint responds with usable quotes before saving. Header values are stored in the local runtime config file, so do not expose this dashboard publicly with real API keys loaded.
 
+If a custom API token or header is invalid, that feed is marked unhealthy and the rest of the tracker keeps running. Built-in exchanges and other custom feeds continue to update.
+
 ## what it measures
 
 The arbitrage engine uses executable sides of the book:
