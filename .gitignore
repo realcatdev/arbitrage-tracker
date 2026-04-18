@@ -4,6 +4,7 @@ dist
 .cache
 .playwright-browsers
 output/playwright
+data/runtime-config.json
 *.tsbuildinfo
 .env
 .DS_Store

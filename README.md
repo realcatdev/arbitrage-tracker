@@ -29,7 +29,9 @@ npm run dev
 
 ## configuration
 
-Most runtime settings can be changed in the dashboard under **Developer settings**. The GUI can update tracked markets, polling interval, alert threshold, fee assumptions, Discord webhook URL, and custom quote API endpoints without restarting the app.
+Most runtime settings can be changed in the dashboard under **Developer settings**. The GUI can update tracked markets, polling interval, alert threshold, fee assumptions, Discord webhook URL, and custom quote API endpoints without restarting the app. Saved GUI settings persist to `data/runtime-config.json`, which is intentionally ignored by git.
+
+Use the market composer to add any `BASE/QUOTE` pair, such as `DOGE/USD`, `BTC/EUR`, or `PEPE/USDT`. Built-in exchanges will only return pairs they support, but custom quote APIs can provide any matching symbol.
 
 The default markets are `BTC/USD`, `ETH/USD`, and `SOL/USD`, but the backend can track a different comma-separated set:
 
@@ -88,6 +90,15 @@ Or an object with a `quotes` array:
 ```
 
 Custom quotes are compared against built-in exchanges automatically when their `symbol` matches.
+
+In the GUI, each custom API row also supports optional request headers, one per line:
+
+```text
+Authorization: Bearer your-token
+X-API-Key: your-key
+```
+
+Use the row's `test` button to verify that the endpoint responds with usable quotes before saving. Header values are stored in the local runtime config file, so do not expose this dashboard publicly with real API keys loaded.
 
 ## what it measures
 

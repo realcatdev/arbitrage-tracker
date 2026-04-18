@@ -4,8 +4,8 @@ import { WebSocketServer } from "ws";
 import { calculateOpportunities, buildSnapshot } from "./arbEngine.js";
 import { sendDiscordAlert } from "./alerts.js";
 import { config, publicConfig, updateConfig } from "./config.js";
-import { fetchAllQuotes } from "./exchanges.js";
-import type { MarketSnapshot } from "../shared/types.js";
+import { fetchAllQuotes, testCustomEndpoint } from "./exchanges.js";
+import type { CustomQuoteEndpoint, MarketSnapshot } from "../shared/types.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -96,6 +96,22 @@ app.patch("/api/config", async (request, response) => {
   schedulePoll();
 
   response.json(nextConfig);
+});
+
+app.post("/api/custom-endpoints/test", async (request, response) => {
+  const endpoint = request.body as CustomQuoteEndpoint;
+
+  if (!endpoint?.name || !endpoint?.url) {
+    response.status(400).json({
+      ok: false,
+      message: "endpoint name and url are required",
+      quoteCount: 0
+    });
+    return;
+  }
+
+  const result = await testCustomEndpoint(endpoint);
+  response.status(result.ok ? 200 : 422).json(result);
 });
 
 wss.on("connection", (socket) => {

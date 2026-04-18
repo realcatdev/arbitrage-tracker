@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CustomEndpointTestResult,
   CustomQuoteEndpoint,
   ExchangeId,
   MarketSnapshot,
@@ -58,6 +59,24 @@ const emptyConfig: RuntimeConfig = {
   },
   customQuoteEndpoints: []
 };
+
+const headersToText = (headers: Record<string, string> | undefined): string =>
+  Object.entries(headers ?? {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+
+const textToHeaders = (value: string): Record<string, string> =>
+  Object.fromEntries(
+    value
+      .split("\n")
+      .map((line) => {
+        const separator = line.indexOf(":");
+        return separator > 0
+          ? [line.slice(0, separator).trim(), line.slice(separator + 1).trim()]
+          : ["", ""];
+      })
+      .filter(([key, headerValue]) => key && headerValue)
+  );
 
 function App() {
   const { snapshot, connectionState, lastMessageAt } = useMarketStream();
@@ -238,8 +257,10 @@ function App() {
 
 function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   const [config, setConfig] = useState<RuntimeConfig>(emptyConfig);
-  const [newMarket, setNewMarket] = useState("");
+  const [newBase, setNewBase] = useState("");
+  const [newQuote, setNewQuote] = useState("USD");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [endpointTests, setEndpointTests] = useState<Record<number, CustomEndpointTestResult>>({});
 
   useEffect(() => {
     let disposed = false;
@@ -281,7 +302,9 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   };
 
   const addMarket = () => {
-    const symbol = newMarket.trim().toUpperCase();
+    const base = newBase.trim().toUpperCase();
+    const quote = newQuote.trim().toUpperCase();
+    const symbol = `${base}/${quote}`;
 
     if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(symbol)) {
       setSaveState("error");
@@ -289,7 +312,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     }
 
     updateField("trackedMarkets", Array.from(new Set([...config.trackedMarkets, symbol])));
-    setNewMarket("");
+    setNewBase("");
   };
 
   const removeMarket = (symbol: string) => {
@@ -310,10 +333,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     });
   };
 
-  const updateEndpoint = (
+  const updateEndpoint = <Key extends keyof CustomQuoteEndpoint>(
     index: number,
-    key: keyof CustomQuoteEndpoint,
-    value: string
+    key: Key,
+    value: CustomQuoteEndpoint[Key]
   ) => {
     const endpoints = config.customQuoteEndpoints.map((endpoint, endpointIndex) =>
       endpointIndex === index ? { ...endpoint, [key]: value } : endpoint
@@ -324,7 +347,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   const addEndpoint = () => {
     updateField("customQuoteEndpoints", [
       ...config.customQuoteEndpoints,
-      { name: "custom", url: "http://localhost:9000/quotes" }
+      { name: "custom", url: "http://localhost:9000/quotes", headers: {} }
     ]);
   };
 
@@ -333,6 +356,29 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
       "customQuoteEndpoints",
       config.customQuoteEndpoints.filter((_endpoint, endpointIndex) => endpointIndex !== index)
     );
+  };
+
+  const testEndpoint = async (endpoint: CustomQuoteEndpoint, index: number) => {
+    setEndpointTests((current) => ({
+      ...current,
+      [index]: { ok: false, message: "testing...", quoteCount: 0 }
+    }));
+
+    try {
+      const response = await fetch("/api/custom-endpoints/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(endpoint)
+      });
+      const payload = (await response.json()) as CustomEndpointTestResult;
+
+      setEndpointTests((current) => ({ ...current, [index]: payload }));
+    } catch {
+      setEndpointTests((current) => ({
+        ...current,
+        [index]: { ok: false, message: "request failed", quoteCount: 0 }
+      }));
+    }
   };
 
   const saveConfig = async () => {
@@ -413,11 +459,25 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
               </button>
             ))}
           </div>
-          <div className="inlineEditor">
+          <div className="marketComposer">
             <input
-              placeholder="DOGE/USD"
-              value={newMarket}
-              onChange={(event) => setNewMarket(event.target.value)}
+              aria-label="base currency"
+              placeholder="DOGE"
+              value={newBase}
+              onChange={(event) => setNewBase(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addMarket();
+                }
+              }}
+            />
+            <span>/</span>
+            <input
+              aria-label="quote currency"
+              placeholder="USD"
+              value={newQuote}
+              onChange={(event) => setNewQuote(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -460,22 +520,42 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
             <p className="settingsHint">no custom quote APIs connected.</p>
           ) : (
             config.customQuoteEndpoints.map((endpoint, index) => (
-              <div className="endpointRow" key={`${endpoint.name}-${index}`}>
-                <input
-                  aria-label="api name"
-                  placeholder="mydesk"
-                  value={endpoint.name}
-                  onChange={(event) => updateEndpoint(index, "name", event.target.value)}
+              <div className="endpointStack" key={`${endpoint.name}-${index}`}>
+                <div className="endpointRow">
+                  <input
+                    aria-label="api name"
+                    placeholder="mydesk"
+                    value={endpoint.name}
+                    onChange={(event) => updateEndpoint(index, "name", event.target.value)}
+                  />
+                  <input
+                    aria-label="api url"
+                    placeholder="http://localhost:9000/quotes"
+                    value={endpoint.url}
+                    onChange={(event) => updateEndpoint(index, "url", event.target.value)}
+                  />
+                </div>
+                <textarea
+                  aria-label="api headers"
+                  placeholder={"Authorization: Bearer token\nX-API-Key: key"}
+                  value={headersToText(endpoint.headers)}
+                  onChange={(event) =>
+                    updateEndpoint(index, "headers", textToHeaders(event.target.value))
+                  }
                 />
-                <input
-                  aria-label="api url"
-                  placeholder="http://localhost:9000/quotes"
-                  value={endpoint.url}
-                  onChange={(event) => updateEndpoint(index, "url", event.target.value)}
-                />
-                <button type="button" onClick={() => removeEndpoint(index)}>
-                  remove
-                </button>
+                <div className="endpointActions">
+                  <button type="button" onClick={() => testEndpoint(endpoint, index)}>
+                    test
+                  </button>
+                  <button type="button" onClick={() => removeEndpoint(index)}>
+                    remove
+                  </button>
+                  {endpointTests[index] ? (
+                    <span className={endpointTests[index].ok ? "testOk" : "testBad"}>
+                      {endpointTests[index].message}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ))
           )}

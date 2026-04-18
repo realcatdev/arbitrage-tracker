@@ -1,5 +1,12 @@
 import { config } from "./config.js";
-import type { AssetSymbol, ExchangeId, ExchangeStatus, Quote } from "../shared/types.js";
+import type {
+  AssetSymbol,
+  CustomEndpointTestResult,
+  CustomQuoteEndpoint,
+  ExchangeId,
+  ExchangeStatus,
+  Quote
+} from "../shared/types.js";
 
 interface MarketConfig {
   symbol: AssetSymbol;
@@ -80,7 +87,11 @@ const nonNegativeNumberFrom = (value: unknown): number | null => {
 
 const normalizeKey = (value: string): string => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
-const requestJson = async <T>(url: string, timeoutMs = 5000): Promise<T> => {
+const requestJson = async <T>(
+  url: string,
+  timeoutMs = 5000,
+  headers: Record<string, string> = {}
+): Promise<T> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -88,7 +99,8 @@ const requestJson = async <T>(url: string, timeoutMs = 5000): Promise<T> => {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "arbitrage-tracker/0.1"
+        "User-Agent": "arbitrage-tracker/0.1",
+        ...headers
       }
     });
 
@@ -278,12 +290,17 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
 
 export const fetchCustomEndpointQuotes = async (
   exchange: ExchangeId,
-  url: string
+  url: string,
+  headers: Record<string, string> = {}
 ): Promise<FetchResult> => {
   const quotes: Quote[] = [];
 
   try {
-    const data = await requestJson<CustomQuotePayload[] | { quotes: CustomQuotePayload[] }>(url);
+    const data = await requestJson<CustomQuotePayload[] | { quotes: CustomQuotePayload[] }>(
+      url,
+      5000,
+      headers
+    );
     const payloads = Array.isArray(data) ? data : data.quotes;
 
     if (!Array.isArray(payloads)) {
@@ -336,6 +353,18 @@ export const fetchAllQuotes = async (): Promise<FetchResult[]> =>
     fetchKrakenQuotes(),
     fetchCoinbaseQuotes(),
     ...config.customQuoteEndpoints.map((endpoint) =>
-      fetchCustomEndpointQuotes(endpoint.name, endpoint.url)
+      fetchCustomEndpointQuotes(endpoint.name, endpoint.url, endpoint.headers ?? {})
     )
   ]);
+
+export const testCustomEndpoint = async (
+  endpoint: CustomQuoteEndpoint
+): Promise<CustomEndpointTestResult> => {
+  const result = await fetchCustomEndpointQuotes(endpoint.name, endpoint.url, endpoint.headers);
+
+  return {
+    ok: result.status.ok && result.quotes.length > 0,
+    message: result.status.message,
+    quoteCount: result.quotes.length
+  };
+};

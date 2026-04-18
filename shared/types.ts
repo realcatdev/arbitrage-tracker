@@ -22,6 +22,7 @@ export interface ExchangeStatus {
 export interface CustomQuoteEndpoint {
   name: string;
   url: string;
+  headers?: Record<string, string>;
 }
 
 export interface RuntimeConfig {
@@ -31,6 +32,12 @@ export interface RuntimeConfig {
   trackedMarkets: AssetSymbol[];
   exchangeFees: Record<ExchangeId, number>;
   customQuoteEndpoints: CustomQuoteEndpoint[];
+}
+
+export interface CustomEndpointTestResult {
+  ok: boolean;
+  message: string;
+  quoteCount: number;
 }
 
 export interface Opportunity {

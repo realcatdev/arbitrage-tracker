@@ -382,8 +382,10 @@ td .subtle {
 
 .field input,
 .inlineEditor input,
+.marketComposer input,
 .feeGrid input,
-.endpointRow input {
+.endpointRow input,
+.endpointStack textarea {
   width: 100%;
   min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -396,15 +398,19 @@ td .subtle {
 
 .field input:focus,
 .inlineEditor input:focus,
+.marketComposer input:focus,
 .feeGrid input:focus,
-.endpointRow input:focus {
+.endpointRow input:focus,
+.endpointStack textarea:focus {
   border-color: rgba(16, 185, 129, 0.72);
 }
 
 .saveButton,
 .inlineEditor button,
+.marketComposer button,
 .groupTitle button,
 .endpointRow button,
+.endpointActions button,
 .tokenList button {
   min-height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -433,10 +439,24 @@ td .subtle {
 }
 
 .inlineEditor,
+.marketComposer,
 .groupTitle,
 .endpointRow {
   display: flex;
   gap: 8px;
+}
+
+.marketComposer {
+  align-items: center;
+}
+
+.marketComposer input {
+  min-width: 0;
+}
+
+.marketComposer span {
+  color: #9fb0c5;
+  font-weight: 800;
 }
 
 .groupTitle {
@@ -457,6 +477,36 @@ td .subtle {
 
 .endpointRow {
   align-items: center;
+}
+
+.endpointStack {
+  display: grid;
+  gap: 8px;
+}
+
+.endpointStack textarea {
+  min-height: 72px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.endpointActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.endpointActions span {
+  color: #8796aa;
+  font-size: 0.82rem;
+}
+
+.endpointActions .testOk {
+  color: #34d399;
+}
+
+.endpointActions .testBad {
+  color: #fb7185;
 }
 
 .endpointRow input:first-child {
@@ -598,7 +648,9 @@ td .subtle {
     grid-template-columns: 1fr;
   }
 
-  .endpointRow {
+  .endpointRow,
+  .endpointActions,
+  .marketComposer {
     align-items: stretch;
     flex-direction: column;
   }

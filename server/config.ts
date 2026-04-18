@@ -1,5 +1,7 @@
 import "dotenv/config";
-import type { RuntimeConfig } from "../shared/types.js";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import type { CustomQuoteEndpoint, RuntimeConfig } from "../shared/types.js";
 
 const defaultMarkets = ["BTC/USD", "ETH/USD", "SOL/USD"];
 const defaultFees: Record<string, number> = {
@@ -7,6 +9,7 @@ const defaultFees: Record<string, number> = {
   kraken: 0.0026,
   coinbase: 0.006
 };
+const runtimeConfigPath = resolve(process.cwd(), "data/runtime-config.json");
 
 const parseNumber = (value: unknown, fallback: number): number => {
   const parsed = Number(value);
@@ -21,11 +24,23 @@ const normalizeMarkets = (value: unknown): string[] => {
     .map((symbol) => String(symbol).trim().toUpperCase())
     .filter((symbol) => /^[A-Z0-9]+\/[A-Z0-9]+$/.test(symbol));
 
-  return Array.from(new Set(markets)).slice(0, 24);
+  return Array.from(new Set(markets)).slice(0, 48);
 };
 
 const parseMarkets = (value: string | undefined): string[] =>
   normalizeMarkets(value ?? defaultMarkets.join(","));
+
+const normalizeHeaders = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, rawValue]) => [key.trim(), String(rawValue).trim()])
+      .filter(([key, rawValue]) => key && rawValue)
+  );
+};
 
 const normalizeExchangeFees = (value: unknown): Record<string, number> => {
   const fees: Record<string, number> = {};
@@ -60,7 +75,7 @@ const parseExchangeFees = (value: string | undefined): Record<string, number> =>
   return fees;
 };
 
-const normalizeCustomEndpoints = (value: unknown): Array<{ name: string; url: string }> => {
+const normalizeCustomEndpoints = (value: unknown): CustomQuoteEndpoint[] => {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -76,14 +91,21 @@ const normalizeCustomEndpoints = (value: unknown): Array<{ name: string; url: st
         .trim()
         .toLowerCase();
       const url = String(source.url ?? "").trim();
+      const headers = normalizeHeaders(source.headers);
 
-      return name && url ? { name, url } : null;
+      return name && url
+        ? {
+            name,
+            url,
+            ...(Object.keys(headers).length > 0 ? { headers } : {})
+          }
+        : null;
     })
-    .filter((endpoint): endpoint is { name: string; url: string } => endpoint !== null)
-    .slice(0, 12);
+    .filter((endpoint): endpoint is CustomQuoteEndpoint => endpoint !== null)
+    .slice(0, 24);
 };
 
-const parseCustomEndpoints = (value: string | undefined): Array<{ name: string; url: string }> =>
+const parseCustomEndpoints = (value: string | undefined): CustomQuoteEndpoint[] =>
   (value ?? "")
     .split(",")
     .map((entry) => {
@@ -98,16 +120,70 @@ const parseCustomEndpoints = (value: string | undefined): Array<{ name: string; 
 
       return name && url ? { name, url } : null;
     })
-    .filter((endpoint): endpoint is { name: string; url: string } => endpoint !== null);
+    .filter((endpoint): endpoint is CustomQuoteEndpoint => endpoint !== null);
 
-export const config: RuntimeConfig & { port: number } = {
-  port: Number(process.env.PORT ?? 4000),
+const envRuntimeConfig = (): RuntimeConfig => ({
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? 3000),
   alertThresholdPercent: Number(process.env.ALERT_THRESHOLD_PERCENT ?? 0.25),
   discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL?.trim() || null,
   trackedMarkets: parseMarkets(process.env.TRACKED_MARKETS),
   exchangeFees: parseExchangeFees(process.env.EXCHANGE_FEES),
   customQuoteEndpoints: parseCustomEndpoints(process.env.CUSTOM_QUOTE_ENDPOINTS)
+});
+
+const readPersistedConfig = (): Partial<RuntimeConfig> => {
+  if (!existsSync(runtimeConfigPath)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(readFileSync(runtimeConfigPath, "utf8")) as Partial<RuntimeConfig>;
+  } catch {
+    return {};
+  }
+};
+
+const applyConfigPatch = (base: RuntimeConfig, input: Partial<RuntimeConfig>): RuntimeConfig => ({
+  pollIntervalMs:
+    "pollIntervalMs" in input
+      ? Math.max(1000, parseNumber(input.pollIntervalMs, base.pollIntervalMs))
+      : base.pollIntervalMs,
+  alertThresholdPercent:
+    "alertThresholdPercent" in input
+      ? parseNumber(input.alertThresholdPercent, base.alertThresholdPercent)
+      : base.alertThresholdPercent,
+  discordWebhookUrl:
+    "discordWebhookUrl" in input ? input.discordWebhookUrl?.trim() || null : base.discordWebhookUrl,
+  trackedMarkets:
+    "trackedMarkets" in input
+      ? normalizeMarkets(input.trackedMarkets).length > 0
+        ? normalizeMarkets(input.trackedMarkets)
+        : [...defaultMarkets]
+      : [...base.trackedMarkets],
+  exchangeFees:
+    "exchangeFees" in input
+      ? {
+          ...defaultFees,
+          ...normalizeExchangeFees(input.exchangeFees)
+        }
+      : { ...base.exchangeFees },
+  customQuoteEndpoints:
+    "customQuoteEndpoints" in input
+      ? normalizeCustomEndpoints(input.customQuoteEndpoints)
+      : base.customQuoteEndpoints.map((endpoint) => ({ ...endpoint }))
+});
+
+const persistConfig = (runtimeConfig: RuntimeConfig): void => {
+  mkdirSync(dirname(runtimeConfigPath), { recursive: true });
+  writeFileSync(`${runtimeConfigPath}.tmp`, `${JSON.stringify(runtimeConfig, null, 2)}\n`);
+  renameSync(`${runtimeConfigPath}.tmp`, runtimeConfigPath);
+};
+
+const initialRuntimeConfig = applyConfigPatch(envRuntimeConfig(), readPersistedConfig());
+
+export const config: RuntimeConfig & { port: number } = {
+  port: Number(process.env.PORT ?? 4000),
+  ...initialRuntimeConfig
 };
 
 export const publicConfig = (): RuntimeConfig => ({
@@ -120,37 +196,15 @@ export const publicConfig = (): RuntimeConfig => ({
 });
 
 export const updateConfig = (input: Partial<RuntimeConfig>): RuntimeConfig => {
-  if ("pollIntervalMs" in input) {
-    config.pollIntervalMs = Math.max(1000, parseNumber(input.pollIntervalMs, config.pollIntervalMs));
-  }
+  const nextConfig = applyConfigPatch(publicConfig(), input);
 
-  if ("alertThresholdPercent" in input) {
-    config.alertThresholdPercent = parseNumber(
-      input.alertThresholdPercent,
-      config.alertThresholdPercent
-    );
-  }
-
-  if ("discordWebhookUrl" in input) {
-    const value = input.discordWebhookUrl?.trim();
-    config.discordWebhookUrl = value || null;
-  }
-
-  if ("trackedMarkets" in input) {
-    const markets = normalizeMarkets(input.trackedMarkets);
-    config.trackedMarkets = markets.length > 0 ? markets : [...defaultMarkets];
-  }
-
-  if ("exchangeFees" in input) {
-    config.exchangeFees = {
-      ...defaultFees,
-      ...normalizeExchangeFees(input.exchangeFees)
-    };
-  }
-
-  if ("customQuoteEndpoints" in input) {
-    config.customQuoteEndpoints = normalizeCustomEndpoints(input.customQuoteEndpoints);
-  }
+  config.pollIntervalMs = nextConfig.pollIntervalMs;
+  config.alertThresholdPercent = nextConfig.alertThresholdPercent;
+  config.discordWebhookUrl = nextConfig.discordWebhookUrl;
+  config.trackedMarkets = nextConfig.trackedMarkets;
+  config.exchangeFees = nextConfig.exchangeFees;
+  config.customQuoteEndpoints = nextConfig.customQuoteEndpoints;
+  persistConfig(nextConfig);
 
   return publicConfig();
 };
