@@ -19,6 +19,20 @@ export interface ExchangeStatus {
   message: string;
 }
 
+export interface CustomQuoteEndpoint {
+  name: string;
+  url: string;
+}
+
+export interface RuntimeConfig {
+  pollIntervalMs: number;
+  alertThresholdPercent: number;
+  discordWebhookUrl: string | null;
+  trackedMarkets: AssetSymbol[];
+  exchangeFees: Record<ExchangeId, number>;
+  customQuoteEndpoints: CustomQuoteEndpoint[];
+}
+
 export interface Opportunity {
   id: string;
   symbol: AssetSymbol;

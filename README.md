@@ -29,6 +29,8 @@ npm run dev
 
 ## configuration
 
+Most runtime settings can be changed in the dashboard under **Developer settings**. The GUI can update tracked markets, polling interval, alert threshold, fee assumptions, Discord webhook URL, and custom quote API endpoints without restarting the app.
+
 The default markets are `BTC/USD`, `ETH/USD`, and `SOL/USD`, but the backend can track a different comma-separated set:
 
 ```bash

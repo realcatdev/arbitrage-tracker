@@ -347,6 +347,142 @@ td .subtle {
   gap: 22px;
 }
 
+.settingsPanel {
+  overflow: hidden;
+}
+
+.settingsBody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px;
+}
+
+.field,
+.settingGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.field.wide,
+.settingGroup,
+.saveState {
+  grid-column: 1 / -1;
+}
+
+.field span,
+.settingGroup > span,
+.groupTitle span,
+.feeGrid span {
+  color: #aab8c8;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.field input,
+.inlineEditor input,
+.feeGrid input,
+.endpointRow input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f7fb;
+  padding: 0 10px;
+  outline: none;
+}
+
+.field input:focus,
+.inlineEditor input:focus,
+.feeGrid input:focus,
+.endpointRow input:focus {
+  border-color: rgba(16, 185, 129, 0.72);
+}
+
+.saveButton,
+.inlineEditor button,
+.groupTitle button,
+.endpointRow button,
+.tokenList button {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #e7edf5;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.saveButton {
+  background: #f4f7fb;
+  color: #0c1017;
+  font-weight: 800;
+}
+
+.tokenList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tokenList button {
+  background: rgba(16, 185, 129, 0.12);
+  color: #dff7ef;
+}
+
+.inlineEditor,
+.groupTitle,
+.endpointRow {
+  display: flex;
+  gap: 8px;
+}
+
+.groupTitle {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.feeGrid label {
+  display: grid;
+  gap: 6px;
+}
+
+.endpointRow {
+  align-items: center;
+}
+
+.endpointRow input:first-child {
+  flex: 0 0 82px;
+}
+
+.endpointRow input:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settingsHint,
+.saveState {
+  margin: 0;
+  color: #8796aa;
+  font-size: 0.86rem;
+}
+
+.saveState.saved {
+  color: #34d399;
+}
+
+.saveState.error {
+  color: #fb7185;
+}
+
 .statusList,
 .quoteTape {
   display: grid;
@@ -455,5 +591,19 @@ td .subtle {
   .iconButton {
     justify-content: center;
     width: 100%;
+  }
+
+  .settingsBody,
+  .feeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .endpointRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .endpointRow input:first-child {
+    flex-basis: auto;
   }
 }

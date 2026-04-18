@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ExchangeId, MarketSnapshot, Opportunity, Quote } from "../shared/types";
+import type {
+  CustomQuoteEndpoint,
+  ExchangeId,
+  MarketSnapshot,
+  Opportunity,
+  Quote,
+  RuntimeConfig
+} from "../shared/types";
 import { useMarketStream } from "./hooks/useMarketStream";
 
 const builtInExchangeLabels: Record<string, string> = {
@@ -38,6 +45,19 @@ const bestOpportunity = (snapshot: MarketSnapshot | null): Opportunity | null =>
   snapshot?.opportunities[0] ?? null;
 
 const quoteKey = (quote: Quote): string => `${quote.exchange}-${quote.symbol}`;
+
+const emptyConfig: RuntimeConfig = {
+  pollIntervalMs: 3000,
+  alertThresholdPercent: 0.25,
+  discordWebhookUrl: null,
+  trackedMarkets: ["BTC/USD", "ETH/USD", "SOL/USD"],
+  exchangeFees: {
+    binance: 0.001,
+    kraken: 0.0026,
+    coinbase: 0.006
+  },
+  customQuoteEndpoints: []
+};
 
 function App() {
   const { snapshot, connectionState, lastMessageAt } = useMarketStream();
@@ -207,11 +227,269 @@ function App() {
         </div>
 
         <aside className="sideRail">
+          <SettingsPanel snapshot={snapshot} />
           <ExchangeStatus snapshot={snapshot} />
           <QuoteTape quotes={visibleQuotes} />
         </aside>
       </section>
     </main>
+  );
+}
+
+function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
+  const [config, setConfig] = useState<RuntimeConfig>(emptyConfig);
+  const [newMarket, setNewMarket] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    let disposed = false;
+
+    fetch("/api/config")
+      .then((response) => response.json() as Promise<RuntimeConfig>)
+      .then((payload) => {
+        if (!disposed) {
+          setConfig(payload);
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setSaveState("error");
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  const feeExchanges = useMemo(() => {
+    const exchanges = new Set([
+      "binance",
+      "kraken",
+      "coinbase",
+      ...Object.keys(config.exchangeFees),
+      ...(snapshot?.statuses.map((status) => status.exchange) ?? []),
+      ...config.customQuoteEndpoints.map((endpoint) => endpoint.name)
+    ]);
+
+    return Array.from(exchanges).sort();
+  }, [config.customQuoteEndpoints, config.exchangeFees, snapshot?.statuses]);
+
+  const updateField = <Key extends keyof RuntimeConfig>(key: Key, value: RuntimeConfig[Key]) => {
+    setConfig((current) => ({ ...current, [key]: value }));
+    setSaveState("idle");
+  };
+
+  const addMarket = () => {
+    const symbol = newMarket.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(symbol)) {
+      setSaveState("error");
+      return;
+    }
+
+    updateField("trackedMarkets", Array.from(new Set([...config.trackedMarkets, symbol])));
+    setNewMarket("");
+  };
+
+  const removeMarket = (symbol: string) => {
+    const nextMarkets = config.trackedMarkets.filter((market) => market !== symbol);
+    updateField("trackedMarkets", nextMarkets.length > 0 ? nextMarkets : [symbol]);
+  };
+
+  const updateFee = (exchange: string, value: string) => {
+    const fee = Number(value);
+
+    if (!Number.isFinite(fee) || fee < 0) {
+      return;
+    }
+
+    updateField("exchangeFees", {
+      ...config.exchangeFees,
+      [exchange]: fee
+    });
+  };
+
+  const updateEndpoint = (
+    index: number,
+    key: keyof CustomQuoteEndpoint,
+    value: string
+  ) => {
+    const endpoints = config.customQuoteEndpoints.map((endpoint, endpointIndex) =>
+      endpointIndex === index ? { ...endpoint, [key]: value } : endpoint
+    );
+    updateField("customQuoteEndpoints", endpoints);
+  };
+
+  const addEndpoint = () => {
+    updateField("customQuoteEndpoints", [
+      ...config.customQuoteEndpoints,
+      { name: "custom", url: "http://localhost:9000/quotes" }
+    ]);
+  };
+
+  const removeEndpoint = (index: number) => {
+    updateField(
+      "customQuoteEndpoints",
+      config.customQuoteEndpoints.filter((_endpoint, endpointIndex) => endpointIndex !== index)
+    );
+  };
+
+  const saveConfig = async () => {
+    setSaveState("saving");
+
+    try {
+      const response = await fetch("/api/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        throw new Error("config save failed");
+      }
+
+      const payload = (await response.json()) as RuntimeConfig;
+      setConfig(payload);
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  return (
+    <section className="railPanel settingsPanel">
+      <div className="panelHeader compact">
+        <div>
+          <p className="eyebrow">runtime controls</p>
+          <h2>Developer settings</h2>
+        </div>
+        <button className="saveButton" type="button" onClick={saveConfig}>
+          {saveState === "saving" ? "saving" : "save"}
+        </button>
+      </div>
+
+      <div className="settingsBody">
+        <label className="field">
+          <span>poll interval ms</span>
+          <input
+            min="1000"
+            step="500"
+            type="number"
+            value={config.pollIntervalMs}
+            onChange={(event) => updateField("pollIntervalMs", Number(event.target.value))}
+          />
+        </label>
+
+        <label className="field">
+          <span>alert threshold %</span>
+          <input
+            min="0"
+            step="0.05"
+            type="number"
+            value={config.alertThresholdPercent}
+            onChange={(event) =>
+              updateField("alertThresholdPercent", Number(event.target.value))
+            }
+          />
+        </label>
+
+        <label className="field wide">
+          <span>discord webhook</span>
+          <input
+            placeholder="https://discord.com/api/webhooks/..."
+            type="url"
+            value={config.discordWebhookUrl ?? ""}
+            onChange={(event) => updateField("discordWebhookUrl", event.target.value || null)}
+          />
+        </label>
+
+        <div className="settingGroup">
+          <span>markets</span>
+          <div className="tokenList">
+            {config.trackedMarkets.map((symbol) => (
+              <button key={symbol} type="button" onClick={() => removeMarket(symbol)}>
+                {symbol} x
+              </button>
+            ))}
+          </div>
+          <div className="inlineEditor">
+            <input
+              placeholder="DOGE/USD"
+              value={newMarket}
+              onChange={(event) => setNewMarket(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addMarket();
+                }
+              }}
+            />
+            <button type="button" onClick={addMarket}>
+              add
+            </button>
+          </div>
+        </div>
+
+        <div className="settingGroup">
+          <span>fees</span>
+          <div className="feeGrid">
+            {feeExchanges.map((exchange) => (
+              <label key={exchange}>
+                <span>{exchangeLabel(exchange)}</span>
+                <input
+                  min="0"
+                  step="0.0001"
+                  type="number"
+                  value={config.exchangeFees[exchange] ?? 0}
+                  onChange={(event) => updateFee(exchange, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="settingGroup">
+          <div className="groupTitle">
+            <span>custom quote apis</span>
+            <button type="button" onClick={addEndpoint}>
+              add api
+            </button>
+          </div>
+          {config.customQuoteEndpoints.length === 0 ? (
+            <p className="settingsHint">no custom quote APIs connected.</p>
+          ) : (
+            config.customQuoteEndpoints.map((endpoint, index) => (
+              <div className="endpointRow" key={`${endpoint.name}-${index}`}>
+                <input
+                  aria-label="api name"
+                  placeholder="mydesk"
+                  value={endpoint.name}
+                  onChange={(event) => updateEndpoint(index, "name", event.target.value)}
+                />
+                <input
+                  aria-label="api url"
+                  placeholder="http://localhost:9000/quotes"
+                  value={endpoint.url}
+                  onChange={(event) => updateEndpoint(index, "url", event.target.value)}
+                />
+                <button type="button" onClick={() => removeEndpoint(index)}>
+                  remove
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <p className={`saveState ${saveState}`}>
+          {saveState === "saved"
+            ? "saved and repolling"
+            : saveState === "error"
+              ? "check the values and try again"
+              : "changes apply after save"}
+        </p>
+      </div>
+    </section>
   );
 }
 

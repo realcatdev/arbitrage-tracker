@@ -3,7 +3,7 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { calculateOpportunities, buildSnapshot } from "./arbEngine.js";
 import { sendDiscordAlert } from "./alerts.js";
-import { config } from "./config.js";
+import { config, publicConfig, updateConfig } from "./config.js";
 import { fetchAllQuotes } from "./exchanges.js";
 import type { MarketSnapshot } from "../shared/types.js";
 
@@ -12,6 +12,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/live" });
 
 let latestSnapshot: MarketSnapshot | null = null;
+let pollTimer: NodeJS.Timeout | null = null;
 
 app.use(express.json());
 
@@ -30,6 +31,10 @@ app.get("/api/snapshot", (_request, response) => {
   }
 
   response.json(latestSnapshot);
+});
+
+app.get("/api/config", (_request, response) => {
+  response.json(publicConfig());
 });
 
 const broadcast = (snapshot: MarketSnapshot): void => {
@@ -68,6 +73,31 @@ const poll = async (): Promise<void> => {
   }
 };
 
+const schedulePoll = (): void => {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+  }
+
+  pollTimer = setTimeout(() => {
+    void poll()
+      .catch((error) => {
+        console.error("poll failed", error);
+      })
+      .finally(schedulePoll);
+  }, config.pollIntervalMs);
+};
+
+app.patch("/api/config", async (request, response) => {
+  const nextConfig = updateConfig(request.body);
+
+  await poll().catch((error) => {
+    console.error("poll failed after config update", error);
+  });
+  schedulePoll();
+
+  response.json(nextConfig);
+});
+
 wss.on("connection", (socket) => {
   if (latestSnapshot) {
     socket.send(JSON.stringify({ type: "snapshot", snapshot: latestSnapshot }));
@@ -78,9 +108,4 @@ server.listen(config.port, () => {
   console.log(`arbitrage tracker api listening on http://localhost:${config.port}`);
 });
 
-void poll();
-setInterval(() => {
-  void poll().catch((error) => {
-    console.error("poll failed", error);
-  });
-}, config.pollIntervalMs);
+void poll().finally(schedulePoll);
