@@ -6,11 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:4000",
-      "/live": {
-        target: "ws://localhost:4000",
-        ws: true
-      }
+      "/api": "http://localhost:4000"
     }
   }
 });

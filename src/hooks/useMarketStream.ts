@@ -11,6 +11,16 @@ interface StreamState {
 
 const getSocketUrl = (): string => {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const explicitUrl = import.meta.env.VITE_WS_URL as string | undefined;
+
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  if (window.location.port === "5173" || window.location.port === "5174") {
+    return `${protocol}//${window.location.hostname}:4000/live`;
+  }
+
   return `${protocol}//${window.location.host}/live`;
 };
 

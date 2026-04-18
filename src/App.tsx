@@ -37,11 +37,11 @@ const formatPercent = (value: number): string => `${value.toFixed(3)}%`;
 
 const timeAgo = (timestamp: number | null): string => {
   if (!timestamp) {
-    return "never";
+    return "Never";
   }
 
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  return seconds < 2 ? "now" : `${seconds}s ago`;
+  return seconds < 2 ? "Now" : `${seconds}s Ago`;
 };
 
 const bestOpportunity = (snapshot: MarketSnapshot | null): Opportunity | null =>
@@ -141,7 +141,7 @@ function App() {
     const notification = new Notification(`${best.symbol} spread detected`, {
       body: `${exchangeLabel(best.buyExchange)} to ${exchangeLabel(best.sellExchange)} at ${formatPercent(
         best.estimatedProfitPercent
-      )} after fees.`
+      )} After Fees.`
     });
 
     const timeout = window.setTimeout(() => notification.close(), 7000);
@@ -161,22 +161,22 @@ function App() {
     <main className="shell">
       <header className="masthead">
         <div>
-          <p className="eyebrow">market inefficiency detector</p>
+          <p className="eyebrow">Market Inefficiency Detector</p>
           <h1>Arbitrage Tracker</h1>
           <p className="lede">
             Live cross-exchange bid/ask spreads with fee-aware profit estimates.
           </p>
         </div>
-        <div className="statusCluster" aria-label="stream status">
+        <div className="statusCluster" aria-label="Stream Status">
           <span className={`pulse ${connectionState}`} />
           <span>{connectionState}</span>
-          <span className="muted">updated {timeAgo(lastMessageAt)}</span>
+          <span className="muted">Updated {timeAgo(lastMessageAt)}</span>
         </div>
       </header>
 
-      <section className="controlBand" aria-label="controls">
+      <section className="controlBand" aria-label="Controls">
         <label className="thresholdControl">
-          <span>alert threshold</span>
+          <span>Alert Threshold</span>
           <input
             type="range"
             min="0"
@@ -189,17 +189,17 @@ function App() {
         </label>
         <button className="iconButton" type="button" onClick={requestNotifications}>
           <span aria-hidden="true">!</span>
-          {notificationsEnabled ? "notifications on" : "enable alerts"}
+          {notificationsEnabled ? "Notifications On" : "Enable Alerts"}
         </button>
       </section>
 
-      <section className="marketPicker" aria-label="market filter">
+      <section className="marketPicker" aria-label="Market Filter">
         <button
           className={selectedSymbol === "all" ? "active" : undefined}
           type="button"
           onClick={() => setSelectedSymbol("all")}
         >
-          all markets
+          All Markets
         </button>
         {visibleSymbols.map((symbol) => (
           <button
@@ -213,28 +213,28 @@ function App() {
         ))}
       </section>
 
-      <section className="overview" aria-label="market overview">
+      <section className="overview" aria-label="Market Overview">
         <Metric
-          label="best net spread"
-          value={top ? formatPercent(top.estimatedProfitPercent) : "waiting"}
-          detail={top ? `${top.symbol} after fees` : "polling exchanges"}
+          label="Best Net Spread"
+          value={top ? formatPercent(top.estimatedProfitPercent) : "Waiting"}
+          detail={top ? `${top.symbol} After Fees` : "Polling Exchanges"}
           isPositive={Boolean(top && top.estimatedProfit > 0)}
         />
         <Metric
-          label="opportunities"
+          label="Opportunities"
           value={String(profitable.length)}
-          detail={`above ${formatPercent(threshold)}`}
+          detail={`Above ${formatPercent(threshold)}`}
           isPositive={profitable.length > 0}
         />
         <Metric
-          label="markets"
+          label="Markets"
           value={String(visibleSymbols.length)}
-          detail={selectedSymbol === "all" ? `${snapshot?.pollIntervalMs ?? 3000}ms polling` : selectedSymbol}
+          detail={selectedSymbol === "all" ? `${snapshot?.pollIntervalMs ?? 3000}ms Polling` : selectedSymbol}
         />
         <Metric
-          label="exchanges"
+          label="Exchanges"
           value={String(snapshot?.statuses.filter((status) => status.ok).length ?? 0)}
-          detail="online now"
+          detail="Online Now"
         />
       </section>
 
@@ -242,7 +242,7 @@ function App() {
         <div className="tablePanel opportunitiesPanel">
           <div className="panelHeader">
             <div>
-              <p className="eyebrow">ranked by estimated net profit</p>
+              <p className="eyebrow">Ranked By Estimated Net Profit</p>
               <h2>Opportunities</h2>
             </div>
           </div>
@@ -365,7 +365,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   const testEndpoint = async (endpoint: CustomQuoteEndpoint, index: number) => {
     setEndpointTests((current) => ({
       ...current,
-      [index]: { ok: false, message: "testing...", quoteCount: 0 }
+      [index]: { ok: false, message: "Testing...", quoteCount: 0 }
     }));
 
     try {
@@ -380,7 +380,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     } catch {
       setEndpointTests((current) => ({
         ...current,
-        [index]: { ok: false, message: "request failed", quoteCount: 0 }
+        [index]: { ok: false, message: "Request Failed", quoteCount: 0 }
       }));
     }
   };
@@ -411,17 +411,17 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     <section className="railPanel settingsPanel">
       <div className="panelHeader compact">
         <div>
-          <p className="eyebrow">runtime controls</p>
-          <h2>Developer settings</h2>
+          <p className="eyebrow">Runtime Controls</p>
+          <h2>Developer Settings</h2>
         </div>
         <button className="saveButton" type="button" onClick={saveConfig}>
-          {saveState === "saving" ? "saving" : "save"}
+          {saveState === "saving" ? "Saving" : "Save"}
         </button>
       </div>
 
       <div className="settingsBody">
         <label className="field">
-          <span>poll interval ms</span>
+          <span>Poll Interval Ms</span>
           <input
             min="1000"
             step="500"
@@ -432,7 +432,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
         </label>
 
         <label className="field">
-          <span>alert threshold %</span>
+          <span>Alert Threshold %</span>
           <input
             min="0"
             step="0.05"
@@ -445,7 +445,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
         </label>
 
         <label className="field wide">
-          <span>discord webhook</span>
+          <span>Discord Webhook</span>
           <input
             placeholder="https://discord.com/api/webhooks/..."
             type="url"
@@ -455,17 +455,17 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
         </label>
 
         <div className="settingGroup">
-          <span>markets</span>
+          <span>Markets</span>
           <div className="tokenList">
             {config.trackedMarkets.map((symbol) => (
               <button key={symbol} type="button" onClick={() => removeMarket(symbol)}>
-                {symbol} x
+                {symbol} X
               </button>
             ))}
           </div>
           <div className="marketComposer">
             <input
-              aria-label="base currency"
+              aria-label="Base Currency"
               placeholder="DOGE"
               value={newBase}
               onChange={(event) => setNewBase(event.target.value)}
@@ -478,7 +478,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
             />
             <span>/</span>
             <input
-              aria-label="quote currency"
+              aria-label="Quote Currency"
               placeholder="USD"
               value={newQuote}
               onChange={(event) => setNewQuote(event.target.value)}
@@ -490,13 +490,13 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
               }}
             />
             <button type="button" onClick={addMarket}>
-              add
+              Add
             </button>
           </div>
         </div>
 
         <div className="settingGroup">
-          <span>fees</span>
+          <span>Fees</span>
           <div className="feeGrid">
             {feeExchanges.map((exchange) => (
               <label key={exchange}>
@@ -515,32 +515,32 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
         <div className="settingGroup">
           <div className="groupTitle">
-            <span>custom quote apis</span>
+            <span>Custom Quote APIs</span>
             <button type="button" onClick={addEndpoint}>
-              add api
+              Add API
             </button>
           </div>
           {config.customQuoteEndpoints.length === 0 ? (
-            <p className="settingsHint">no custom quote APIs connected.</p>
+            <p className="settingsHint">No Custom Quote APIs Connected.</p>
           ) : (
             config.customQuoteEndpoints.map((endpoint, index) => (
               <div className="endpointStack" key={`${endpoint.name}-${index}`}>
                 <div className="endpointRow">
                   <input
-                    aria-label="api name"
-                    placeholder="mydesk"
+                    aria-label="API Name"
+                    placeholder="My Desk"
                     value={endpoint.name}
                     onChange={(event) => updateEndpoint(index, "name", event.target.value)}
                   />
                   <input
-                    aria-label="api url"
+                    aria-label="API URL"
                     placeholder="http://localhost:9000/quotes"
                     value={endpoint.url}
                     onChange={(event) => updateEndpoint(index, "url", event.target.value)}
                   />
                 </div>
                 <textarea
-                  aria-label="api headers"
+                  aria-label="API Headers"
                   placeholder={"Authorization: Bearer token\nX-API-Key: key"}
                   value={headersToText(endpoint.headers)}
                   onChange={(event) =>
@@ -549,10 +549,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
                 />
                 <div className="endpointActions">
                   <button type="button" onClick={() => testEndpoint(endpoint, index)}>
-                    test
+                    Test
                   </button>
                   <button type="button" onClick={() => removeEndpoint(index)}>
-                    remove
+                    Remove
                   </button>
                   {endpointTests[index] ? (
                     <span className={endpointTests[index].ok ? "testOk" : "testBad"}>
@@ -567,10 +567,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
         <p className={`saveState ${saveState}`}>
           {saveState === "saved"
-            ? "saved and repolling"
+            ? "Saved And Repolling"
             : saveState === "error"
-              ? "check the values and try again"
-              : "changes apply after save"}
+              ? "Check The Values And Try Again"
+              : "Changes Apply After Save"}
         </p>
       </div>
     </section>
@@ -602,7 +602,7 @@ function OpportunityTable({
   threshold: number;
 }) {
   if (opportunities.length === 0) {
-    return <p className="empty">waiting for usable bid/ask data from at least two exchanges.</p>;
+    return <p className="empty">Waiting For Usable Bid/Ask Data From At Least Two Exchanges.</p>;
   }
 
   return (
@@ -614,7 +614,7 @@ function OpportunityTable({
             <th>Buy @</th>
             <th>Sell @</th>
             <th>Spread</th>
-            <th>Est. profit</th>
+            <th>Est. Profit</th>
             <th>Route</th>
           </tr>
         </thead>
@@ -656,7 +656,7 @@ function ExchangeStatus({ snapshot }: { snapshot: MarketSnapshot | null }) {
     <section className="railPanel">
       <div className="panelHeader compact">
         <div>
-          <p className="eyebrow">click for trace</p>
+          <p className="eyebrow">Click For Trace</p>
           <h2>Exchanges</h2>
         </div>
       </div>
@@ -682,7 +682,7 @@ function ExchangeStatus({ snapshot }: { snapshot: MarketSnapshot | null }) {
                 <div className="statusMeta">
                   <small>{timeAgo(status.lastUpdate)}</small>
                   <span className="miniStats">
-                    {passed} ok / {failed} fail
+                    {passed} OK / {failed} Fail
                   </span>
                 </div>
               </button>
@@ -699,7 +699,7 @@ function ExchangeDetails({ status }: { status: ExchangeStatusType }) {
   const checks = status.checks ?? [];
 
   if (checks.length === 0) {
-    return <p className="diagnosticEmpty">no request diagnostics reported yet.</p>;
+    return <p className="diagnosticEmpty">No Request Diagnostics Reported Yet.</p>;
   }
 
   return (
@@ -708,28 +708,28 @@ function ExchangeDetails({ status }: { status: ExchangeStatusType }) {
         <div className={`diagnosticRow ${check.ok ? "passed" : "failed"}`} key={checkKey(check)}>
           <div className="diagnosticHead">
             <strong>{check.symbol}</strong>
-            <span>{check.ok ? "passed" : "failed"}</span>
+            <span>{check.ok ? "Passed" : "Failed"}</span>
           </div>
           <dl>
             <div>
-              <dt>source</dt>
+              <dt>Source</dt>
               <dd>{check.sourceSymbol}</dd>
             </div>
             <div>
-              <dt>code</dt>
-              <dd>{check.code ?? "ok"}</dd>
+              <dt>Code</dt>
+              <dd>{check.code ?? "OK"}</dd>
             </div>
             <div>
-              <dt>latency</dt>
+              <dt>Latency</dt>
               <dd>{check.latencyMs ?? 0}ms</dd>
             </div>
             <div>
-              <dt>message</dt>
+              <dt>Message</dt>
               <dd>{check.message}</dd>
             </div>
             {check.quoteSource ? (
               <div>
-                <dt>quote</dt>
+                <dt>Quote</dt>
                 <dd>{check.quoteSource}</dd>
               </div>
             ) : null}
@@ -744,7 +744,7 @@ function QuoteTape({ quotes }: { quotes: Quote[] }) {
   return (
     <section className="railPanel">
       <div className="panelHeader compact">
-        <h2>Live quotes</h2>
+        <h2>Live Quotes</h2>
       </div>
       <div className="quoteTape">
         {quotes.map((quote) => (

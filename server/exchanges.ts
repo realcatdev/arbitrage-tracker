@@ -84,7 +84,7 @@ const baseStatus = (exchange: ExchangeId): ExchangeStatus => ({
   exchange,
   ok: false,
   lastUpdate: null,
-  message: "waiting for first fetch",
+  message: "Waiting For First Fetch",
   successCount: 0,
   failureCount: 0,
   checks: []
@@ -94,14 +94,14 @@ const failedResult = (exchange: ExchangeId, error: unknown): FetchResult => ({
   quotes: [],
   status: {
     ...baseStatus(exchange),
-    message: error instanceof Error ? error.message : "unknown fetch error",
+    message: error instanceof Error ? error.message : "Unknown Fetch Error",
     failureCount: 1,
     checks: [
       {
         symbol: "all",
         sourceSymbol: exchange,
         ok: false,
-        message: error instanceof Error ? error.message : "unknown fetch error",
+        message: error instanceof Error ? error.message : "Unknown Fetch Error",
         code: errorCode(error)
       }
     ]
@@ -120,7 +120,7 @@ export const statusForQuotes = (
       exchange,
       ok: true,
       lastUpdate: Date.now(),
-      message: `${quotes.length} ${label} online, ${failureCount} failed`,
+      message: `${quotes.length} ${label} Online, ${failureCount} Failed`,
       successCount: quotes.length,
       failureCount,
       checks
@@ -132,7 +132,7 @@ export const statusForQuotes = (
       exchange,
       ok: true,
       lastUpdate: Date.now(),
-      message: `${quotes.length} ${label} online`,
+      message: `${quotes.length} ${label} Online`,
       successCount: quotes.length,
       failureCount,
       checks
@@ -141,7 +141,7 @@ export const statusForQuotes = (
 
   return {
     ...baseStatus(exchange),
-    message: `0 ${label} online${failureCount > 0 ? `, ${failureCount} failed` : ""}`,
+    message: `0 ${label} Online${failureCount > 0 ? `, ${failureCount} Failed` : ""}`,
     failureCount,
     checks
   };
@@ -155,12 +155,12 @@ const settledMarketResults = (
       ? result.value
       : {
           quote: null,
-          error: result.reason instanceof Error ? result.reason.message : "unknown market error",
+          error: result.reason instanceof Error ? result.reason.message : "Unknown Market Error",
           check: {
             symbol: "unknown",
             sourceSymbol: "unknown",
             ok: false,
-            message: result.reason instanceof Error ? result.reason.message : "unknown market error",
+            message: result.reason instanceof Error ? result.reason.message : "Unknown Market Error",
             code: errorCode(result.reason)
           }
         }
@@ -183,7 +183,7 @@ const successCheck = (
   symbol,
   sourceSymbol,
   ok: true,
-  message: "quote accepted",
+  message: "Quote Accepted",
   quoteSource,
   latencyMs: Date.now() - startedAt
 });
@@ -197,7 +197,7 @@ const failureCheck = (
   symbol,
   sourceSymbol,
   ok: false,
-  message: error instanceof Error ? error.message : "unknown quote error",
+  message: error instanceof Error ? error.message : "Unknown Quote Error",
   code: errorCode(error),
   latencyMs: Date.now() - startedAt
 });
@@ -303,7 +303,7 @@ export const fetchBinanceQuotes = async (): Promise<FetchResult> => {
       exchange,
       quotes,
       failureCount,
-      "markets",
+      "Markets",
       marketResults.map((result) => result.check)
     )
   };
@@ -370,7 +370,7 @@ export const fetchKrakenQuotes = async (): Promise<FetchResult> => {
       exchange,
       quotes,
       failureCount,
-      "markets",
+      "Markets",
       marketResults.map((result) => result.check)
     )
   };
@@ -426,7 +426,7 @@ export const fetchCoinbaseQuotes = async (): Promise<FetchResult> => {
       exchange,
       quotes,
       failureCount,
-      "markets",
+      "Markets",
       marketResults.map((result) => result.check)
     )
   };
@@ -463,7 +463,7 @@ export const fetchCustomEndpointQuotes = async (
           symbol: symbol || "unknown",
           sourceSymbol: url,
           ok: false,
-          message: "custom quote missing valid symbol, bid, or ask",
+            message: "Custom Quote Missing Valid Symbol, Bid, Or Ask",
           code: "invalid_payload",
           latencyMs: Date.now() - startedAt
         });
@@ -489,7 +489,7 @@ export const fetchCustomEndpointQuotes = async (
         exchange,
         quotes,
         payloads.length - quotes.length,
-        "custom quotes",
+        "Custom Quotes",
         checks
       )
     };
@@ -498,7 +498,7 @@ export const fetchCustomEndpointQuotes = async (
       quotes,
       status: {
         ...baseStatus(exchange),
-        message: error instanceof Error ? error.message : "unknown custom endpoint error",
+        message: error instanceof Error ? error.message : "Unknown Custom Endpoint Error",
         failureCount: 1,
         checks: [failureCheck(exchange, url, error, startedAt)]
       }

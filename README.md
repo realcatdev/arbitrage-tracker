@@ -1,8 +1,8 @@
-# arbitrage tracker
+# Arbitrage Tracker
 
 A live crypto market inefficiency detector. It pulls bid/ask prices from Binance, Kraken, and Coinbase, normalizes symbols, calculates cross-exchange spreads after trading fees, and streams ranked opportunities to a React dashboard.
 
-## architecture
+## Architecture
 
 ```text
 exchanges -> price fetcher -> normalizer -> arbitrage engine -> websocket ui / alerts
@@ -10,7 +10,7 @@ exchanges -> price fetcher -> normalizer -> arbitrage engine -> websocket ui / a
 
 The backend polls public REST endpoints every few seconds, then publishes a `MarketSnapshot` over `/live`. The frontend renders the newest snapshot without page refreshes.
 
-## quick start
+## Quick Start
 
 ```bash
 npm install
@@ -27,7 +27,7 @@ cp .env.example .env
 npm run dev
 ```
 
-## start and stop
+## Start And Stop
 
 Start the full app:
 
@@ -67,7 +67,7 @@ If dependencies are missing or the install cache has permission issues:
 npm install --cache .npm-cache
 ```
 
-## configuration
+## Configuration
 
 Most runtime settings can be changed in the dashboard under **Developer settings**. The GUI can update tracked markets, polling interval, alert threshold, fee assumptions, Discord webhook URL, and custom quote API endpoints without restarting the app. Saved GUI settings persist to `data/runtime-config.json`, which is intentionally ignored by git.
 
@@ -94,7 +94,7 @@ Basic fee assumptions can be overridden without code changes:
 EXCHANGE_FEES=binance:0.001,kraken:0.0026,coinbase:0.006,mydesk:0.0015
 ```
 
-## custom quote apis
+## Custom Quote APIs
 
 Users can add their own public or private quote source if they expose normalized bid/ask data over HTTP:
 
@@ -143,17 +143,17 @@ Use the row's `test` button to verify that the endpoint responds with usable quo
 
 If a custom API token or header is invalid, that feed is marked unhealthy and the rest of the tracker keeps running. Built-in exchanges and other custom feeds continue to update.
 
-## what it measures
+## What It Measures
 
 The arbitrage engine uses executable sides of the book:
 
-- buy at the ask
-- sell at the bid
-- subtract maker/taker-style fee assumptions per exchange
+- Buy at the ask
+- Sell at the bid
+- Subtract maker/taker-style fee assumptions per exchange
 
 That avoids the common mistake of comparing last traded prices and calling the difference profit.
 
-## default markets
+## Default Markets
 
 - BTC/USD
 - ETH/USD
@@ -161,7 +161,7 @@ That avoids the common mistake of comparing last traded prices and calling the d
 
 Binance is fetched through stablecoin pairs and normalized into USD-style display for comparison. Treat those results as an approximation unless you explicitly model stablecoin conversion and venue-specific settlement.
 
-## real-world constraints
+## Real-World Constraints
 
 This is a monitoring tool, not an execution engine.
 
@@ -172,7 +172,7 @@ This is a monitoring tool, not an execution engine.
 - Exchange outages, rate limits, and regional API restrictions affect data quality.
 - Stablecoin quotes are not identical to fiat USD quotes during stress.
 
-## scripts
+## Scripts
 
 - `npm run dev` starts the API and Vite UI together.
 - `npm run build` type-checks and builds the frontend.

@@ -92,11 +92,11 @@ test("partial quote failures keep an exchange healthy with a partial status", ()
       }
     ],
     1,
-    "markets"
+    "Markets"
   );
 
   assert.equal(status.ok, true);
-  assert.equal(status.message, "1 markets online, 1 failed");
+  assert.equal(status.message, "1 Markets Online, 1 Failed");
 });
 
 test("custom endpoint with no usable quotes is marked unhealthy", async () => {
@@ -109,7 +109,7 @@ test("custom endpoint with no usable quotes is marked unhealthy", async () => {
       const result = await fetchCustomEndpointQuotes("private", url);
 
       assert.equal(result.status.ok, false);
-      assert.equal(result.status.message, "0 custom quotes online, 1 failed");
+      assert.equal(result.status.message, "0 Custom Quotes Online, 1 Failed");
       assert.deepEqual(result.quotes, []);
     }
   );
