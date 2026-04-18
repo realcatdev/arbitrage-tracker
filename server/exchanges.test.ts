@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { fetchCustomEndpointQuotes, testCustomEndpoint } from "./exchanges.js";
+import { fetchCustomEndpointQuotes, statusForQuotes, testCustomEndpoint } from "./exchanges.js";
 
 const withQuoteServer = async (
   handler: http.RequestListener,
@@ -73,6 +73,44 @@ test("custom endpoint test reports invalid token failures as a normal result", a
       assert.equal(result.ok, false);
       assert.equal(result.quoteCount, 0);
       assert.match(result.message, /403/);
+    }
+  );
+});
+
+test("partial quote failures keep an exchange healthy with a partial status", () => {
+  const status = statusForQuotes(
+    "coinbase",
+    [
+      {
+        exchange: "coinbase",
+        symbol: "BTC/USD",
+        bid: 100,
+        ask: 101,
+        feeRate: 0.006,
+        quoteSource: "test",
+        timestamp: 1
+      }
+    ],
+    1,
+    "markets"
+  );
+
+  assert.equal(status.ok, true);
+  assert.equal(status.message, "1 markets online, 1 failed");
+});
+
+test("custom endpoint with no usable quotes is marked unhealthy", async () => {
+  await withQuoteServer(
+    (_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify([{ symbol: "BTC/USD", bid: "nope", ask: 101 }]));
+    },
+    async (url) => {
+      const result = await fetchCustomEndpointQuotes("private", url);
+
+      assert.equal(result.status.ok, false);
+      assert.equal(result.status.message, "0 custom quotes online, 1 failed");
+      assert.deepEqual(result.quotes, []);
     }
   );
 });

@@ -86,6 +86,7 @@ The built-in adapters derive exchange pair ids from those symbols:
 - Coinbase uses product ids such as `BTC-USD`.
 
 Some assets will not be available on every exchange. The exchange health panel will show partial failures or a lower market count when an adapter cannot fetch a symbol.
+If one configured market fails on an exchange, the adapter keeps any other valid quotes from that exchange online and reports the failed count instead of dropping the whole exchange.
 
 Basic fee assumptions can be overridden without code changes:
 
