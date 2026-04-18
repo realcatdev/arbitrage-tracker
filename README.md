@@ -27,6 +27,46 @@ cp .env.example .env
 npm run dev
 ```
 
+## start and stop
+
+Start the full app:
+
+```bash
+cd /Users/sonnet/Documents/Codex/arbitrage-tracker
+npm run dev
+```
+
+Open the dashboard:
+
+```text
+http://localhost:5173/
+```
+
+The backend API runs at:
+
+```text
+http://localhost:4000/
+```
+
+Check that the backend is healthy:
+
+```bash
+curl http://localhost:4000/api/health
+curl http://localhost:4000/api/config
+```
+
+Stop the app from the terminal where it is running:
+
+```text
+ctrl + c
+```
+
+If dependencies are missing or the install cache has permission issues:
+
+```bash
+npm install --cache .npm-cache
+```
+
 ## configuration
 
 Most runtime settings can be changed in the dashboard under **Developer settings**. The GUI can update tracked markets, polling interval, alert threshold, fee assumptions, Discord webhook URL, and custom quote API endpoints without restarting the app. Saved GUI settings persist to `data/runtime-config.json`, which is intentionally ignored by git.
