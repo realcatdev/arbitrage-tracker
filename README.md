@@ -32,7 +32,7 @@ npm run dev
 Start the full app:
 
 ```bash
-cd /Users/sonnet/Documents/Codex/arbitrage-tracker
+cd arbitrage-tracker
 npm run dev
 ```
 
