@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import type { CustomQuoteEndpoint, RuntimeConfig } from "../shared/types.js";
 
 const defaultMarkets = ["BTC/USD", "ETH/USD", "SOL/USD"];
+const defaultEnabledExchanges = ["binance", "kraken", "coinbase"];
 const defaultFees: Record<string, number> = {
   binance: 0.001,
   kraken: 0.0026,
@@ -14,6 +15,22 @@ const runtimeConfigPath = resolve(process.cwd(), "data/runtime-config.json");
 const parseNumber = (value: unknown, fallback: number): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const normalizeExchangeId = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const normalizeExchangeIds = (value: unknown, fallback: string[] = []): string[] => {
+  const rawExchanges = Array.isArray(value)
+    ? value
+    : String(value ?? fallback.join(",")).split(",");
+  const exchanges = rawExchanges.map(normalizeExchangeId).filter(Boolean);
+
+  return Array.from(new Set(exchanges)).slice(0, 32);
 };
 
 const normalizeMarkets = (value: unknown): string[] => {
@@ -29,6 +46,9 @@ const normalizeMarkets = (value: unknown): string[] => {
 
 const parseMarkets = (value: string | undefined): string[] =>
   normalizeMarkets(value ?? defaultMarkets.join(","));
+
+const parseEnabledExchanges = (value: string | undefined, customExchanges: string[]): string[] =>
+  normalizeExchangeIds(value, [...defaultEnabledExchanges, ...customExchanges]);
 
 const normalizeHeaders = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -87,9 +107,7 @@ const normalizeCustomEndpoints = (value: unknown): CustomQuoteEndpoint[] => {
       }
 
       const source = endpoint as Record<string, unknown>;
-      const name = String(source.name ?? "")
-        .trim()
-        .toLowerCase();
+      const name = normalizeExchangeId(source.name);
       const url = String(source.url ?? "").trim();
       const headers = normalizeHeaders(source.headers);
 
@@ -115,21 +133,29 @@ const parseCustomEndpoints = (value: string | undefined): CustomQuoteEndpoint[] 
         return null;
       }
 
-      const name = entry.slice(0, separator).trim().toLowerCase();
+      const name = normalizeExchangeId(entry.slice(0, separator));
       const url = entry.slice(separator + 1).trim();
 
       return name && url ? { name, url } : null;
     })
     .filter((endpoint): endpoint is CustomQuoteEndpoint => endpoint !== null);
 
-const envRuntimeConfig = (): RuntimeConfig => ({
-  pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? 3000),
-  alertThresholdPercent: Number(process.env.ALERT_THRESHOLD_PERCENT ?? 0.25),
-  discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL?.trim() || null,
-  trackedMarkets: parseMarkets(process.env.TRACKED_MARKETS),
-  exchangeFees: parseExchangeFees(process.env.EXCHANGE_FEES),
-  customQuoteEndpoints: parseCustomEndpoints(process.env.CUSTOM_QUOTE_ENDPOINTS)
-});
+const envRuntimeConfig = (): RuntimeConfig => {
+  const customQuoteEndpoints = parseCustomEndpoints(process.env.CUSTOM_QUOTE_ENDPOINTS);
+
+  return {
+    pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? 3000),
+    alertThresholdPercent: Number(process.env.ALERT_THRESHOLD_PERCENT ?? 0.25),
+    discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL?.trim() || null,
+    trackedMarkets: parseMarkets(process.env.TRACKED_MARKETS),
+    enabledExchanges: parseEnabledExchanges(
+      process.env.ENABLED_EXCHANGES,
+      customQuoteEndpoints.map((endpoint) => endpoint.name)
+    ),
+    exchangeFees: parseExchangeFees(process.env.EXCHANGE_FEES),
+    customQuoteEndpoints
+  };
+};
 
 const readPersistedConfig = (): Partial<RuntimeConfig> => {
   if (!existsSync(runtimeConfigPath)) {
@@ -143,35 +169,49 @@ const readPersistedConfig = (): Partial<RuntimeConfig> => {
   }
 };
 
-const applyConfigPatch = (base: RuntimeConfig, input: Partial<RuntimeConfig>): RuntimeConfig => ({
-  pollIntervalMs:
-    "pollIntervalMs" in input
-      ? Math.max(1000, parseNumber(input.pollIntervalMs, base.pollIntervalMs))
-      : base.pollIntervalMs,
-  alertThresholdPercent:
-    "alertThresholdPercent" in input
-      ? parseNumber(input.alertThresholdPercent, base.alertThresholdPercent)
-      : base.alertThresholdPercent,
-  discordWebhookUrl:
-    "discordWebhookUrl" in input ? input.discordWebhookUrl?.trim() || null : base.discordWebhookUrl,
-  trackedMarkets:
+const applyConfigPatch = (base: RuntimeConfig, input: Partial<RuntimeConfig>): RuntimeConfig => {
+  const trackedMarkets =
     "trackedMarkets" in input
       ? normalizeMarkets(input.trackedMarkets).length > 0
         ? normalizeMarkets(input.trackedMarkets)
         : [...defaultMarkets]
-      : [...base.trackedMarkets],
-  exchangeFees:
-    "exchangeFees" in input
-      ? {
-          ...defaultFees,
-          ...normalizeExchangeFees(input.exchangeFees)
-        }
-      : { ...base.exchangeFees },
-  customQuoteEndpoints:
+      : [...base.trackedMarkets];
+  const customQuoteEndpoints =
     "customQuoteEndpoints" in input
       ? normalizeCustomEndpoints(input.customQuoteEndpoints)
-      : base.customQuoteEndpoints.map((endpoint) => ({ ...endpoint }))
-});
+      : base.customQuoteEndpoints.map((endpoint) => ({ ...endpoint }));
+  const customExchangeIds = customQuoteEndpoints.map((endpoint) => endpoint.name);
+  const enabledExchanges =
+    "enabledExchanges" in input
+      ? normalizeExchangeIds(input.enabledExchanges)
+      : normalizeExchangeIds(base.enabledExchanges, [
+          ...defaultEnabledExchanges,
+          ...customExchangeIds
+        ]);
+
+  return {
+    pollIntervalMs:
+      "pollIntervalMs" in input
+        ? Math.max(1000, parseNumber(input.pollIntervalMs, base.pollIntervalMs))
+        : base.pollIntervalMs,
+    alertThresholdPercent:
+      "alertThresholdPercent" in input
+        ? parseNumber(input.alertThresholdPercent, base.alertThresholdPercent)
+        : base.alertThresholdPercent,
+    discordWebhookUrl:
+      "discordWebhookUrl" in input ? input.discordWebhookUrl?.trim() || null : base.discordWebhookUrl,
+    trackedMarkets,
+    enabledExchanges,
+    exchangeFees:
+      "exchangeFees" in input
+        ? {
+            ...defaultFees,
+            ...normalizeExchangeFees(input.exchangeFees)
+          }
+        : { ...base.exchangeFees },
+    customQuoteEndpoints
+  };
+};
 
 const persistConfig = (runtimeConfig: RuntimeConfig): void => {
   mkdirSync(dirname(runtimeConfigPath), { recursive: true });
@@ -191,6 +231,7 @@ export const publicConfig = (): RuntimeConfig => ({
   alertThresholdPercent: config.alertThresholdPercent,
   discordWebhookUrl: config.discordWebhookUrl,
   trackedMarkets: [...config.trackedMarkets],
+  enabledExchanges: [...config.enabledExchanges],
   exchangeFees: { ...config.exchangeFees },
   customQuoteEndpoints: config.customQuoteEndpoints.map((endpoint) => ({ ...endpoint }))
 });
@@ -202,6 +243,7 @@ export const updateConfig = (input: Partial<RuntimeConfig>): RuntimeConfig => {
   config.alertThresholdPercent = nextConfig.alertThresholdPercent;
   config.discordWebhookUrl = nextConfig.discordWebhookUrl;
   config.trackedMarkets = nextConfig.trackedMarkets;
+  config.enabledExchanges = nextConfig.enabledExchanges;
   config.exchangeFees = nextConfig.exchangeFees;
   config.customQuoteEndpoints = nextConfig.customQuoteEndpoints;
   persistConfig(nextConfig);

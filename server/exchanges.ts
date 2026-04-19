@@ -507,11 +507,15 @@ export const fetchCustomEndpointQuotes = async (
 };
 
 export const fetchAllQuotes = async (): Promise<FetchResult[]> => {
-  const sources: FetchSource[] = [
+  const builtInSources: FetchSource[] = [
     { exchange: "binance", fetchQuotes: fetchBinanceQuotes },
     { exchange: "kraken", fetchQuotes: fetchKrakenQuotes },
-    { exchange: "coinbase", fetchQuotes: fetchCoinbaseQuotes },
-    ...config.customQuoteEndpoints.map((endpoint) => ({
+    { exchange: "coinbase", fetchQuotes: fetchCoinbaseQuotes }
+  ];
+  const enabled = new Set(config.enabledExchanges);
+  const sources: FetchSource[] = [
+    ...builtInSources.filter((source) => enabled.has(source.exchange)),
+    ...config.customQuoteEndpoints.filter((endpoint) => enabled.has(endpoint.name)).map((endpoint) => ({
       exchange: endpoint.name,
       fetchQuotes: () =>
         fetchCustomEndpointQuotes(endpoint.name, endpoint.url, endpoint.headers ?? {})

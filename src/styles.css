@@ -523,6 +523,63 @@ td .subtle {
   color: #d8fbef;
 }
 
+.exchangeTokenList {
+  display: grid;
+  gap: 8px;
+}
+
+.exchangeToken {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 8px 8px 8px 10px;
+}
+
+.exchangeToken div {
+  min-width: 0;
+}
+
+.exchangeToken strong,
+.exchangeToken span {
+  display: block;
+}
+
+.exchangeToken strong {
+  color: #f3f6f8;
+  font-size: 0.9rem;
+}
+
+.exchangeToken span {
+  color: #8f98a5;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.exchangeToken button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfd6df;
+  padding: 0;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.exchangeToken button:hover {
+  border-color: rgba(240, 93, 94, 0.5);
+  background: rgba(240, 93, 94, 0.12);
+  color: #ffd8d8;
+}
+
 .marketComposer,
 .groupTitle,
 .customExchangeComposer,

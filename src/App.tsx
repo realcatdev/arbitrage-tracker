@@ -56,6 +56,7 @@ const emptyConfig: RuntimeConfig = {
   alertThresholdPercent: 0.25,
   discordWebhookUrl: null,
   trackedMarkets: ["BTC/USD", "ETH/USD", "SOL/USD"],
+  enabledExchanges: ["binance", "kraken", "coinbase"],
   exchangeFees: {
     binance: 0.001,
     kraken: 0.0026,
@@ -260,7 +261,7 @@ function App() {
         </section>
 
         <aside className="devInspector" aria-label="Developer Options">
-          <SettingsPanel snapshot={snapshot} />
+          <SettingsPanel />
           <ExchangeStatus snapshot={snapshot} />
           <QuoteTape quotes={visibleQuotes} />
         </aside>
@@ -269,7 +270,7 @@ function App() {
   );
 }
 
-function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
+function SettingsPanel() {
   const [config, setConfig] = useState<RuntimeConfig>(emptyConfig);
   const [newBase, setNewBase] = useState("");
   const [newQuote, setNewQuote] = useState("USD");
@@ -301,18 +302,16 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     };
   }, []);
 
-  const feeExchanges = useMemo(() => {
+  const visibleExchanges = useMemo(() => {
     const exchanges = new Set([
-      "binance",
-      "kraken",
-      "coinbase",
-      ...Object.keys(config.exchangeFees),
-      ...(snapshot?.statuses.map((status) => status.exchange) ?? []),
+      ...config.enabledExchanges,
       ...config.customQuoteEndpoints.map((endpoint) => endpoint.name)
     ]);
 
     return Array.from(exchanges).sort();
-  }, [config.customQuoteEndpoints, config.exchangeFees, snapshot?.statuses]);
+  }, [config.customQuoteEndpoints, config.enabledExchanges]);
+
+  const feeExchanges = useMemo(() => visibleExchanges, [visibleExchanges]);
 
   const updateField = <Key extends keyof RuntimeConfig>(key: Key, value: RuntimeConfig[Key]) => {
     setConfig((current) => ({ ...current, [key]: value }));
@@ -351,6 +350,36 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     });
   };
 
+  const customEndpointForExchange = (exchange: string): CustomQuoteEndpoint | undefined =>
+    config.customQuoteEndpoints.find((endpoint) => endpoint.name === exchange);
+
+  const removeExchange = (exchange: string) => {
+    const nextEnabledExchanges = config.enabledExchanges.filter((enabled) => enabled !== exchange);
+    const nextCustomQuoteEndpoints = config.customQuoteEndpoints.filter(
+      (endpoint) => endpoint.name !== exchange
+    );
+    const nextExchangeFees = { ...config.exchangeFees };
+
+    if (!builtInExchangeLabels[exchange]) {
+      delete nextExchangeFees[exchange];
+    }
+
+    setConfig((current) => ({
+      ...current,
+      enabledExchanges: nextEnabledExchanges,
+      customQuoteEndpoints: nextCustomQuoteEndpoints,
+      exchangeFees: nextExchangeFees
+    }));
+    setEndpointTests((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([index]) => config.customQuoteEndpoints[Number(index)]?.name !== exchange
+        )
+      )
+    );
+    setSaveState("idle");
+  };
+
   const updateEndpoint = <Key extends keyof CustomQuoteEndpoint>(
     index: number,
     key: Key,
@@ -373,14 +402,21 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
     setConfig((current) => {
       const previousFee = current.exchangeFees[previousName];
+      const nextEnabledExchanges = current.enabledExchanges.map((exchange) =>
+        exchange === previousName ? nextName : exchange
+      );
 
       if (previousFee === undefined || current.exchangeFees[nextName] !== undefined) {
-        return current;
+        return {
+          ...current,
+          enabledExchanges: nextEnabledExchanges
+        };
       }
 
       const { [previousName]: _removed, ...remainingFees } = current.exchangeFees;
       return {
         ...current,
+        enabledExchanges: nextEnabledExchanges,
         exchangeFees: {
           ...remainingFees,
           [nextName]: previousFee
@@ -406,6 +442,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     };
 
     updateField("customQuoteEndpoints", [...config.customQuoteEndpoints, endpoint]);
+    updateField(
+      "enabledExchanges",
+      Array.from(new Set([...config.enabledExchanges, name]))
+    );
     updateField("exchangeFees", {
       ...config.exchangeFees,
       [name]: fee
@@ -434,6 +474,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     updateField(
       "customQuoteEndpoints",
       nextEndpoints
+    );
+    updateField(
+      "enabledExchanges",
+      config.enabledExchanges.filter((exchange) => exchange !== removedName)
     );
     updateField("exchangeFees", nextFees);
   };
@@ -497,7 +541,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
       <div className="configMeta" aria-label="Configuration Summary">
         <span>{config.trackedMarkets.length} markets</span>
-        <span>{feeExchanges.length} fee models</span>
+        <span>{visibleExchanges.length} exchanges</span>
         <span>{config.customQuoteEndpoints.length} custom APIs</span>
       </div>
 
@@ -575,6 +619,35 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
               Add
             </button>
           </div>
+        </div>
+
+        <div className="settingGroup">
+          <span>Exchanges</span>
+          {visibleExchanges.length === 0 ? (
+            <p className="settingsHint">No Exchanges Enabled.</p>
+          ) : (
+            <div className="exchangeTokenList">
+              {visibleExchanges.map((exchange) => {
+                const endpoint = customEndpointForExchange(exchange);
+
+                return (
+                  <div className="exchangeToken" key={exchange}>
+                    <div>
+                      <strong>{exchangeLabel(exchange)}</strong>
+                      <span>{endpoint ? endpoint.url : "Built-in connector"}</span>
+                    </div>
+                    <button
+                      aria-label={`Remove ${exchangeLabel(exchange)}`}
+                      type="button"
+                      onClick={() => removeExchange(exchange)}
+                    >
+                      X
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="settingGroup">

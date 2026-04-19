@@ -43,6 +43,7 @@ export interface RuntimeConfig {
   alertThresholdPercent: number;
   discordWebhookUrl: string | null;
   trackedMarkets: AssetSymbol[];
+  enabledExchanges: ExchangeId[];
   exchangeFees: Record<ExchangeId, number>;
   customQuoteEndpoints: CustomQuoteEndpoint[];
 }

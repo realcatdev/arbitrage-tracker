@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { fetchCustomEndpointQuotes, statusForQuotes, testCustomEndpoint } from "./exchanges.js";
+import { config } from "./config.js";
+import {
+  fetchAllQuotes,
+  fetchCustomEndpointQuotes,
+  statusForQuotes,
+  testCustomEndpoint
+} from "./exchanges.js";
 
 const withQuoteServer = async (
   handler: http.RequestListener,
@@ -113,4 +119,35 @@ test("custom endpoint with no usable quotes is marked unhealthy", async () => {
       assert.deepEqual(result.quotes, []);
     }
   );
+});
+
+test("fetch all quotes only polls enabled exchanges", async () => {
+  const previousEnabledExchanges = [...config.enabledExchanges];
+  const previousCustomQuoteEndpoints = config.customQuoteEndpoints.map((endpoint) => ({
+    ...endpoint
+  }));
+
+  try {
+    await withQuoteServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify([{ symbol: "BTC/USD", bid: 100, ask: 101 }]));
+      },
+      async (url) => {
+        config.enabledExchanges = ["private"];
+        config.customQuoteEndpoints = [{ name: "private", url }];
+
+        const results = await fetchAllQuotes();
+
+        assert.deepEqual(
+          results.map((result) => result.status.exchange),
+          ["private"]
+        );
+        assert.equal(results[0].quotes[0].exchange, "private");
+      }
+    );
+  } finally {
+    config.enabledExchanges = previousEnabledExchanges;
+    config.customQuoteEndpoints = previousCustomQuoteEndpoints;
+  }
 });
