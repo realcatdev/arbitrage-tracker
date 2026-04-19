@@ -82,6 +82,13 @@ const textToHeaders = (value: string): Record<string, string> =>
       .filter(([key, headerValue]) => key && headerValue)
   );
 
+const normalizeExchangeId = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
 function App() {
   const { snapshot, connectionState, lastMessageAt } = useMarketStream();
   const [threshold, setThreshold] = useState(0.25);
@@ -121,6 +128,8 @@ function App() {
   );
 
   const top = visibleOpportunities[0] ?? bestOpportunity(snapshot);
+  const onlineExchanges = snapshot?.statuses.filter((status) => status.ok).length ?? 0;
+  const totalExchanges = snapshot?.statuses.length ?? 0;
 
   useEffect(() => {
     const best = profitable[0];
@@ -158,23 +167,23 @@ function App() {
   };
 
   return (
-    <main className="shell">
-      <header className="masthead">
-        <div>
-          <p className="eyebrow">Market Inefficiency Detector</p>
-          <h1>Arbitrage Tracker</h1>
-          <p className="lede">
-            Live cross-exchange bid/ask spreads with fee-aware profit estimates.
-          </p>
+    <main className="appShell">
+      <header className="topBar">
+        <div className="brandBlock">
+          <span className="productMark" aria-hidden="true" />
+          <div>
+            <p className="eyebrow">Market Inefficiency Detector</p>
+            <h1>Arbitrage Tracker</h1>
+          </div>
         </div>
-        <div className="statusCluster" aria-label="Stream Status">
+        <div className="streamPill" aria-label="Stream Status">
           <span className={`pulse ${connectionState}`} />
           <span>{connectionState}</span>
           <span className="muted">Updated {timeAgo(lastMessageAt)}</span>
         </div>
       </header>
 
-      <section className="controlBand" aria-label="Controls">
+      <section className="commandBar" aria-label="Controls">
         <label className="thresholdControl">
           <span>Alert Threshold</span>
           <input
@@ -187,7 +196,7 @@ function App() {
           />
           <strong>{formatPercent(threshold)}</strong>
         </label>
-        <button className="iconButton" type="button" onClick={requestNotifications}>
+        <button className="primaryButton" type="button" onClick={requestNotifications}>
           <span aria-hidden="true">!</span>
           {notificationsEnabled ? "Notifications On" : "Enable Alerts"}
         </button>
@@ -199,7 +208,7 @@ function App() {
           type="button"
           onClick={() => setSelectedSymbol("all")}
         >
-          All Markets
+          All
         </button>
         {visibleSymbols.map((symbol) => (
           <button
@@ -217,39 +226,40 @@ function App() {
         <Metric
           label="Best Net Spread"
           value={top ? formatPercent(top.estimatedProfitPercent) : "Waiting"}
-          detail={top ? `${top.symbol} After Fees` : "Polling Exchanges"}
+          detail={top ? `${top.symbol} after fees` : "Polling exchanges"}
           isPositive={Boolean(top && top.estimatedProfit > 0)}
         />
         <Metric
-          label="Opportunities"
+          label="Profitable Routes"
           value={String(profitable.length)}
-          detail={`Above ${formatPercent(threshold)}`}
+          detail={`At or above ${formatPercent(threshold)}`}
           isPositive={profitable.length > 0}
         />
         <Metric
-          label="Markets"
+          label="Tracked Markets"
           value={String(visibleSymbols.length)}
-          detail={selectedSymbol === "all" ? `${snapshot?.pollIntervalMs ?? 3000}ms Polling` : selectedSymbol}
+          detail={
+            selectedSymbol === "all"
+              ? `${snapshot?.pollIntervalMs ?? 3000}ms polling`
+              : selectedSymbol
+          }
         />
-        <Metric
-          label="Exchanges"
-          value={String(snapshot?.statuses.filter((status) => status.ok).length ?? 0)}
-          detail="Online Now"
-        />
+        <Metric label="Exchange Health" value={`${onlineExchanges}/${totalExchanges}`} detail="Online" />
       </section>
 
       <section className="workspace">
-        <div className="tablePanel opportunitiesPanel">
-          <div className="panelHeader">
+        <section className="marketDesk" aria-label="Opportunity Workspace">
+          <div className="sectionHeader">
             <div>
               <p className="eyebrow">Ranked By Estimated Net Profit</p>
               <h2>Opportunities</h2>
             </div>
+            <span className="tableCount">{visibleOpportunities.length} routes</span>
           </div>
           <OpportunityTable opportunities={visibleOpportunities} threshold={threshold} />
-        </div>
+        </section>
 
-        <aside className="sideRail">
+        <aside className="devInspector" aria-label="Developer Options">
           <SettingsPanel snapshot={snapshot} />
           <ExchangeStatus snapshot={snapshot} />
           <QuoteTape quotes={visibleQuotes} />
@@ -263,6 +273,10 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   const [config, setConfig] = useState<RuntimeConfig>(emptyConfig);
   const [newBase, setNewBase] = useState("");
   const [newQuote, setNewQuote] = useState("USD");
+  const [customExchangeName, setCustomExchangeName] = useState("");
+  const [customExchangeUrl, setCustomExchangeUrl] = useState("");
+  const [customExchangeFee, setCustomExchangeFee] = useState("0.0025");
+  const [customExchangeHeaders, setCustomExchangeHeaders] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [endpointTests, setEndpointTests] = useState<Record<number, CustomEndpointTestResult>>({});
 
@@ -348,18 +362,80 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
     updateField("customQuoteEndpoints", endpoints);
   };
 
-  const addEndpoint = () => {
-    updateField("customQuoteEndpoints", [
-      ...config.customQuoteEndpoints,
-      { name: "custom", url: "http://localhost:9000/quotes", headers: {} }
-    ]);
+  const updateEndpointName = (index: number, value: string) => {
+    const previousName = config.customQuoteEndpoints[index]?.name;
+    const nextName = normalizeExchangeId(value);
+    updateEndpoint(index, "name", nextName);
+
+    if (!previousName || !nextName || previousName === nextName) {
+      return;
+    }
+
+    setConfig((current) => {
+      const previousFee = current.exchangeFees[previousName];
+
+      if (previousFee === undefined || current.exchangeFees[nextName] !== undefined) {
+        return current;
+      }
+
+      const { [previousName]: _removed, ...remainingFees } = current.exchangeFees;
+      return {
+        ...current,
+        exchangeFees: {
+          ...remainingFees,
+          [nextName]: previousFee
+        }
+      };
+    });
+  };
+
+  const addCustomExchange = () => {
+    const name = normalizeExchangeId(customExchangeName);
+    const url = customExchangeUrl.trim();
+    const fee = Number(customExchangeFee);
+
+    if (!name || !url || !Number.isFinite(fee) || fee < 0) {
+      setSaveState("error");
+      return;
+    }
+
+    const endpoint: CustomQuoteEndpoint = {
+      name,
+      url,
+      headers: textToHeaders(customExchangeHeaders)
+    };
+
+    updateField("customQuoteEndpoints", [...config.customQuoteEndpoints, endpoint]);
+    updateField("exchangeFees", {
+      ...config.exchangeFees,
+      [name]: fee
+    });
+    setCustomExchangeName("");
+    setCustomExchangeUrl("");
+    setCustomExchangeFee("0.0025");
+    setCustomExchangeHeaders("");
   };
 
   const removeEndpoint = (index: number) => {
+    const removedName = config.customQuoteEndpoints[index]?.name;
+    const nextEndpoints = config.customQuoteEndpoints.filter(
+      (_endpoint, endpointIndex) => endpointIndex !== index
+    );
+    const nextFees = { ...config.exchangeFees };
+
+    if (
+      removedName &&
+      !builtInExchangeLabels[removedName] &&
+      !nextEndpoints.some((endpoint) => endpoint.name === removedName)
+    ) {
+      delete nextFees[removedName];
+    }
+
     updateField(
       "customQuoteEndpoints",
-      config.customQuoteEndpoints.filter((_endpoint, endpointIndex) => endpointIndex !== index)
+      nextEndpoints
     );
+    updateField("exchangeFees", nextFees);
   };
 
   const testEndpoint = async (endpoint: CustomQuoteEndpoint, index: number) => {
@@ -408,15 +484,21 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
   };
 
   return (
-    <section className="railPanel settingsPanel">
-      <div className="panelHeader compact">
+    <section className="inspectorPanel settingsPanel">
+      <div className="sectionHeader compact">
         <div>
-          <p className="eyebrow">Runtime Controls</p>
-          <h2>Developer Settings</h2>
+          <p className="eyebrow">Runtime Config</p>
+          <h2>Developer Options</h2>
         </div>
-        <button className="saveButton" type="button" onClick={saveConfig}>
+        <button className={`saveButton ${saveState}`} type="button" onClick={saveConfig}>
           {saveState === "saving" ? "Saving" : "Save"}
         </button>
+      </div>
+
+      <div className="configMeta" aria-label="Configuration Summary">
+        <span>{config.trackedMarkets.length} markets</span>
+        <span>{feeExchanges.length} fee models</span>
+        <span>{config.customQuoteEndpoints.length} custom APIs</span>
       </div>
 
       <div className="settingsBody">
@@ -455,7 +537,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
         </label>
 
         <div className="settingGroup">
-          <span>Markets</span>
+          <span>Tracked Markets</span>
           <div className="tokenList">
             {config.trackedMarkets.map((symbol) => (
               <button key={symbol} type="button" onClick={() => removeMarket(symbol)}>
@@ -496,7 +578,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
         </div>
 
         <div className="settingGroup">
-          <span>Fees</span>
+          <span>Exchange Fees</span>
           <div className="feeGrid">
             {feeExchanges.map((exchange) => (
               <label key={exchange}>
@@ -515,13 +597,42 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
 
         <div className="settingGroup">
           <div className="groupTitle">
-            <span>Custom Quote APIs</span>
-            <button type="button" onClick={addEndpoint}>
-              Add API
+            <span>Custom Exchanges</span>
+          </div>
+          <div className="customExchangeComposer">
+            <input
+              aria-label="Custom Exchange Name"
+              placeholder="my-exchange"
+              value={customExchangeName}
+              onChange={(event) => setCustomExchangeName(event.target.value)}
+            />
+            <input
+              aria-label="Custom Exchange API URL"
+              placeholder="http://localhost:9000/quotes"
+              value={customExchangeUrl}
+              onChange={(event) => setCustomExchangeUrl(event.target.value)}
+            />
+            <input
+              aria-label="Custom Exchange Fee"
+              min="0"
+              step="0.0001"
+              type="number"
+              value={customExchangeFee}
+              onChange={(event) => setCustomExchangeFee(event.target.value)}
+            />
+            <button type="button" onClick={addCustomExchange}>
+              Add Exchange
             </button>
           </div>
+          <textarea
+            aria-label="Custom Exchange Headers"
+            className="headersComposer"
+            placeholder={"Authorization: Bearer token\nX-API-Key: key"}
+            value={customExchangeHeaders}
+            onChange={(event) => setCustomExchangeHeaders(event.target.value)}
+          />
           {config.customQuoteEndpoints.length === 0 ? (
-            <p className="settingsHint">No Custom Quote APIs Connected.</p>
+            <p className="settingsHint">No Custom Exchanges Connected.</p>
           ) : (
             config.customQuoteEndpoints.map((endpoint, index) => (
               <div className="endpointStack" key={`${endpoint.name}-${index}`}>
@@ -530,7 +641,7 @@ function SettingsPanel({ snapshot }: { snapshot: MarketSnapshot | null }) {
                     aria-label="API Name"
                     placeholder="My Desk"
                     value={endpoint.name}
-                    onChange={(event) => updateEndpoint(index, "name", event.target.value)}
+                    onChange={(event) => updateEndpointName(index, event.target.value)}
                   />
                   <input
                     aria-label="API URL"
@@ -653,8 +764,8 @@ function ExchangeStatus({ snapshot }: { snapshot: MarketSnapshot | null }) {
   const statuses = snapshot?.statuses ?? [];
 
   return (
-    <section className="railPanel">
-      <div className="panelHeader compact">
+    <section className="inspectorPanel">
+      <div className="sectionHeader compact">
         <div>
           <p className="eyebrow">Click For Trace</p>
           <h2>Exchanges</h2>
@@ -742,8 +853,8 @@ function ExchangeDetails({ status }: { status: ExchangeStatusType }) {
 
 function QuoteTape({ quotes }: { quotes: Quote[] }) {
   return (
-    <section className="railPanel">
-      <div className="panelHeader compact">
+    <section className="inspectorPanel">
+      <div className="sectionHeader compact">
         <h2>Live Quotes</h2>
       </div>
       <div className="quoteTape">
